@@ -1,0 +1,10 @@
+#!/bin/sh
+'''exec' "/Users/jitwisutthobut/Library/Application Support/Claude/scratch-workspaces/03d71600-f7bd-4aba-8d03-b1c573cd758f/fbd9461f-81a7-4ba2-97ff-9e8e48cde1c3/scratch-2026-10-18-1e8aa3/python-mongodb-tutorial/.venv/bin/python3.12" "$0" "$@"
+' '''
+# -*- coding: utf-8 -*-
+import re
+import sys
+from pip._internal.cli.main import main
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+    sys.exit(main())
