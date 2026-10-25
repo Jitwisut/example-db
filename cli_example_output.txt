@@ -1,0 +1,53 @@
+=== Connected databases ===
+main: /Users/jitwisutthobut/Documents/Codex/2026-10-25/s/outputs/python-sqlite-tutorial/tutorial.db r/w
+=== Tables ===
+ name
+------
+people
+=== Schema of people ===
+CREATE TABLE people (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            age INTEGER NOT NULL CHECK (age >= 0),
+            city TEXT NOT NULL
+        );
+=== All people ===
+ id     name    age    city
+----  --------  ---  ---------
+1001  Ram        26  Hyderabad
+1002  Rahim      27  Bangalore
+1003  Robert     28  Mumbai
+1004  Romeo      25  Pune
+1005  Sarmista   23  Delhi
+1006  Rasajna    26  Chennai
+=== WHERE with AND, BETWEEN and IN ===
+ name    age
+-------  ---
+Ram       26
+Rahim     27
+Rasajna   26
+=== LIKE, ORDER BY and LIMIT ===
+ name    age
+-------  ---
+Ram       26
+Rasajna   26
+Rahim     27
+=== GROUP BY and HAVING ===
+age  people_count
+---  ------------
+ 26             2
+=== Storage classes ===
+ a       b      c     d     e
+----  -------  ----  ----  ----
+null  integer  real  text  blob
+=== PRAGMA table_info ===
+cid  name   type    notnull  dflt_value  pk
+---  ----  -------  -------  ----------  --
+  0  id    TEXT           1               1
+  1  name  TEXT           1               0
+  2  age   INTEGER        1               0
+  3  city  TEXT           1               0
+=== Finished: people still has 6 rows ===
+total_people
+------------
+           6

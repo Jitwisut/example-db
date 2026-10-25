@@ -1,0 +1,15 @@
+# Local Python environments and bytecode
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# SQLite transient files and optional exercise backups
+*.db-journal
+*.db-wal
+*.db-shm
+tutorial_backup.db
+tutorial_dump.sql
+
+# macOS metadata
+.DS_Store
