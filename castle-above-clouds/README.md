@@ -3,13 +3,13 @@
 A single-file, real-time Three.js PBR scene: a floating castle-town above moonlit clouds whose buildings,
 lit windows, lanterns and routes are rows in a live SQLite database (sql.js / WebAssembly, in a worker).
 
-Run it from any static server (the page loads Three.js 0.160.0 and sql.js from jsDelivr):
+Run it from the repository root (needs Python 3 and an internet connection for the CDN libraries):
 
 ```bash
-python3 -m http.server 5180 --directory castle-above-clouds
+python3 dev.py
 ```
 
-Then open http://localhost:5180.
+On Windows use `py dev.py`. It serves this folder on http://127.0.0.1:5180 (or the next free port) and opens your browser; Ctrl+C stops it.
 
 - `EXPLORE SQL` opens the command dock: SELECT · WHERE · ORDER BY · JOIN · GROUP BY · INSERT · UPDATE · DELETE · SQL INJECTION LAB.
 - Every visual response comes from real query results; mapping queries return the ids of the rows involved.
