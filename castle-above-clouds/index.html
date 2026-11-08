@@ -1,0 +1,2038 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Castle Above Clouds — SQL World</title>
+<meta name="description" content="A real-time PBR floating castle-town whose buildings, windows and lanterns are rows in a live SQLite database." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,300;9..144,500&family=IBM+Plex+Sans+Thai:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --ink:#ece6da; --ink-soft:#c8c3b8; --muted:#8f97aa; --warm:#f2c27b; --warm-2:#ffb66a;
+  --glass:rgba(9,13,25,.58); --glass-2:rgba(12,17,32,.78); --line:rgba(236,230,218,.14); --line-2:rgba(236,230,218,.26);
+  --mono:'Geist Mono',ui-monospace,Menlo,monospace; --serif:'Fraunces',Georgia,serif; --thai:'IBM Plex Sans Thai',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#070b16;color:var(--ink);font-family:var(--mono);-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:1px solid var(--warm);outline-offset:3px}
+#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.ui{position:fixed;z-index:5}
+
+/* ---------- editorial identity ---------- */
+.brand{top:30px;left:40px;display:flex;flex-direction:column;gap:7px;pointer-events:none}
+.brand-title{font-size:12px;letter-spacing:.42em;font-weight:500}
+.brand-sub{font-size:10px;letter-spacing:.32em;color:var(--muted)}
+.brand-sql{margin-top:10px;font-size:10px;letter-spacing:.2em;color:var(--warm);opacity:.85;display:flex;align-items:center;gap:8px}
+.brand-sql::before{content:'';width:18px;height:1px;background:var(--warm);opacity:.7}
+.badge{top:28px;right:40px;font-size:10px;letter-spacing:.28em;padding:8px 12px;border:1px solid var(--line-2);border-radius:999px;background:rgba(9,13,25,.35);backdrop-filter:blur(6px);display:flex;align-items:center;gap:9px}
+.badge i{width:6px;height:6px;border-radius:50%;background:var(--warm);box-shadow:0 0 10px var(--warm);animation:pulse 3.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+.hero{left:40px;top:50%;transform:translateY(-46%);max-width:520px;transition:opacity .7s ease,transform .7s ease}
+.hero h1{margin:0;font-family:var(--serif);font-size:clamp(44px,5.6vw,84px);line-height:.98;letter-spacing:-.025em;font-variation-settings:'opsz' 144}
+.hero h1 .l{display:block;font-weight:300}
+.hero h1 .m{display:block;font-weight:500;font-style:italic}
+.hero p{margin:28px 0 0;max-width:400px;font-family:var(--serif);font-weight:300;font-size:16px;line-height:1.62;color:var(--ink-soft);text-shadow:0 1px 18px rgba(4,7,15,.8)}
+.explore{margin-top:30px;display:inline-flex;align-items:center;gap:14px;padding:12px 18px 12px 20px;font-size:11px;letter-spacing:.24em;background:rgba(242,194,123,.08);border:1px solid rgba(242,194,123,.45);border-radius:2px;transition:background .25s,border-color .25s,transform .25s}
+.explore:hover{background:rgba(242,194,123,.16);border-color:var(--warm)}
+.explore span{transition:transform .25s}
+.explore:hover span{transform:translateX(4px)}
+body.sql-mode .hero{opacity:0;transform:translate(-24px,-46%);pointer-events:none}
+body.lab-mode .sql,body.lab-mode .hero,body.lab-mode .hud{opacity:0!important;pointer-events:none!important}
+.telemetry{right:40px;bottom:34px;text-align:right;font-size:10px;line-height:1.9;letter-spacing:.14em;color:var(--muted);pointer-events:none}
+.telemetry b{color:var(--ink);font-weight:400}
+.credit{right:14px;top:50%;transform:translateY(-50%) rotate(180deg);writing-mode:vertical-rl;font-size:9px;letter-spacing:.42em;color:var(--muted);pointer-events:none;opacity:.8}
+.controls{left:40px;bottom:30px;display:flex;gap:6px}
+.controls button{width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--line);background:rgba(9,13,25,.4);backdrop-filter:blur(6px);border-radius:50%;transition:border-color .2s,background .2s}
+.controls button:hover{border-color:var(--line-2);background:rgba(20,26,44,.6)}
+.controls button[aria-pressed=true]{border-color:rgba(242,194,123,.6);color:var(--warm)}
+.controls svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.4}
+
+/* ---------- SQL layer ---------- */
+.sql{left:40px;top:118px;width:372px;max-height:calc(100vh - 210px);display:flex;flex-direction:column;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px) saturate(120%);border-radius:4px;box-shadow:0 30px 80px -30px rgba(0,0,0,.7);opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .45s ease,transform .45s ease}
+body.sql-mode .sql{opacity:1;transform:none;pointer-events:auto}
+.sql header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:.2em;color:var(--muted)}
+.sql header .act{display:flex;gap:4px}
+.icon-btn{width:26px;height:26px;display:grid;place-items:center;background:none;border:1px solid transparent;border-radius:3px;color:var(--muted)}
+.icon-btn:hover{border-color:var(--line);color:var(--ink)}
+.icon-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.5}
+.cats{display:flex;flex-wrap:wrap;gap:4px;padding:12px 14px 4px}
+.cats button{font-size:10px;letter-spacing:.08em;padding:6px 8px;border:1px solid var(--line);background:none;border-radius:2px;color:var(--ink-soft);transition:all .2s}
+.cats button:hover{border-color:var(--line-2);color:var(--ink)}
+.cats button[aria-pressed=true]{border-color:rgba(242,194,123,.6);color:var(--warm);background:rgba(242,194,123,.07)}
+.cats button.lab{color:#e9a39a;border-color:rgba(233,163,154,.3)}
+.dock{padding:12px 14px 14px;overflow:auto;min-height:0}
+.sql.collapsed .cats,.sql.collapsed .dock{display:none}
+.dock-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.dock-head b{font-family:var(--serif);font-size:26px;font-weight:500;letter-spacing:-.01em}
+.dock-head span{font-size:9px;letter-spacing:.2em;color:var(--muted)}
+.th{margin:8px 0 12px;font-family:var(--thai);font-size:13px;line-height:1.65;color:var(--ink-soft)}
+textarea#sqlInput{width:100%;min-height:96px;resize:vertical;padding:11px 12px;background:rgba(3,6,14,.55);border:1px solid var(--line);border-radius:3px;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:#f3e7cf;outline:none;tab-size:2}
+textarea#sqlInput:focus{border-color:rgba(242,194,123,.5)}
+.row{display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap}
+.btn{font-size:10px;letter-spacing:.2em;padding:9px 13px;border:1px solid var(--line-2);background:none;border-radius:2px;transition:all .2s}
+.btn:hover{border-color:var(--ink-soft)}
+.btn.run{background:var(--warm);border-color:var(--warm);color:#1d1408;font-weight:500}
+.btn.run:hover{background:#ffd393}
+.btn:disabled{opacity:.45;cursor:progress}
+.status{margin-top:10px;font-size:10.5px;letter-spacing:.06em;line-height:1.6;color:var(--muted);min-height:16px}
+.status b{color:var(--warm);font-weight:500}
+.status.err{color:#f0a49a}
+.explain,.textview{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:3px;background:rgba(3,6,14,.4);font-size:11px;line-height:1.65;color:var(--ink-soft)}
+.explain{font-family:var(--thai);font-size:12.5px}
+.textview table{border-collapse:collapse;width:100%}
+.textview th,.textview td{text-align:left;padding:3px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+.textview th{color:var(--muted);font-weight:400}
+.textview .scroll{overflow:auto;max-height:180px}
+.link{background:none;border:none;padding:0;color:var(--warm);text-decoration:underline;text-underline-offset:3px;font-size:10.5px}
+.hud{top:30px;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:.24em;padding:8px 14px;border:1px solid rgba(242,194,123,.35);background:rgba(9,13,25,.5);backdrop-filter:blur(6px);border-radius:2px;color:var(--warm);opacity:0;transition:opacity .4s;pointer-events:none}
+.hud.on{opacity:1}
+
+/* labels projected from 3D */
+#labels{position:fixed;inset:0;pointer-events:none;z-index:4}
+.tag{position:absolute;left:0;top:0;transform:translate(-50%,-100%);white-space:nowrap;font-size:9.5px;letter-spacing:.1em;padding:4px 7px;border-left:1px solid rgba(242,194,123,.8);background:rgba(8,11,22,.62);backdrop-filter:blur(4px);color:var(--ink);transition:opacity .35s}
+.tag small{display:block;color:var(--muted);font-size:8.5px;letter-spacing:.08em;margin-top:2px}
+.tag.rank{border-left-color:#bcd2ff}
+.tag.group{font-family:var(--serif);font-size:20px;letter-spacing:0;padding:2px 10px 4px;border-left:2px solid var(--gc,#f2c27b)}
+.tag.group small{font-family:var(--mono);font-size:9px;letter-spacing:.16em}
+.tag.ghost{border-left-color:#8f97aa;color:var(--muted)}
+.tag.delta{border-left-color:#ffd393;color:#ffe2b0}
+.tag.dim{opacity:.0}
+#tooltip{position:fixed;z-index:8;pointer-events:none;font-size:10px;letter-spacing:.08em;line-height:1.6;padding:8px 10px;background:var(--glass-2);border:1px solid var(--line);border-radius:3px;backdrop-filter:blur(8px);max-width:320px}
+#tooltip b{color:var(--warm);font-weight:500}
+#inspector{position:fixed;z-index:7;width:260px;padding:12px 14px;background:var(--glass-2);border:1px solid var(--line);border-radius:3px;backdrop-filter:blur(10px);font-size:10.5px;line-height:1.7}
+#inspector header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;letter-spacing:.16em;color:var(--muted);font-size:9.5px}
+#inspector h3{margin:0 0 6px;font-family:var(--serif);font-weight:500;font-size:19px;letter-spacing:0;color:var(--ink)}
+#inspector dl{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;margin:0}
+#inspector dt{color:var(--muted)}
+#inspector dd{margin:0;color:var(--ink)}
+#inspector .sub{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);color:var(--ink-soft)}
+[hidden]{display:none!important}
+
+/* ---------- lab (inside the round tower) ---------- */
+#veil{position:fixed;inset:0;background:#05070d;opacity:0;pointer-events:none;z-index:9;transition:opacity .9s ease}
+#veil.on{opacity:1}
+.lab{right:56px;top:50%;transform:translateY(-50%);width:400px;max-height:calc(100vh - 120px);overflow:auto;background:rgba(14,10,12,.72);border:1px solid rgba(233,163,154,.28);border-radius:4px;backdrop-filter:blur(14px);padding:16px 18px 18px;z-index:6}
+.lab h2{margin:0;font-family:var(--serif);font-weight:500;font-size:26px}
+.lab .kick{font-size:9.5px;letter-spacing:.24em;color:#e9a39a;margin-bottom:6px}
+.lab .th{margin:8px 0 12px}
+.mode{display:flex;border:1px solid var(--line);border-radius:2px;margin-bottom:12px}
+.mode button{flex:1;padding:8px;font-size:10px;letter-spacing:.2em;background:none;border:none;color:var(--muted)}
+.mode button[aria-pressed=true]{background:rgba(233,163,154,.14);color:#f3c1b9}
+.mode button.safe[aria-pressed=true]{background:rgba(140,200,180,.14);color:#a9e2cf}
+.lab label{display:block;font-size:9.5px;letter-spacing:.2em;color:var(--muted);margin-top:8px}
+.lab input{width:100%;margin-top:4px;padding:9px 10px;background:rgba(3,4,10,.55);border:1px solid var(--line);border-radius:2px;font-family:var(--mono);font-size:12px;outline:none}
+.lab input:focus{border-color:rgba(242,194,123,.5)}
+.presets{display:flex;gap:10px;margin-top:8px;font-size:10px;color:var(--muted);align-items:center}
+.assembled{margin-top:12px;padding:10px 12px;background:rgba(3,4,10,.6);border:1px solid var(--line);border-radius:3px;font-size:11.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
+.assembled .inp{color:#ffcf8a;background:rgba(255,190,110,.12);border-radius:2px}
+.assembled .ph{color:#a9e2cf}
+.assembled .cm{color:#6f7486;text-decoration:line-through}
+.bound{margin-top:6px;font-size:10.5px;color:#a9e2cf}
+.verdict{margin-top:12px;padding:10px 12px;border-radius:3px;border:1px solid var(--line)}
+.verdict strong{display:block;font-size:11px;letter-spacing:.22em}
+.verdict.ok{border-color:rgba(242,194,123,.5);background:rgba(242,194,123,.08)}
+.verdict.ok strong{color:var(--warm)}
+.verdict.no{border-color:rgba(169,226,207,.4);background:rgba(169,226,207,.06)}
+.verdict.no strong{color:#a9e2cf}
+.verdict.err strong{color:#f0a49a}
+.verdict .rows{margin-top:6px;font-size:10.5px;color:var(--ink-soft)}
+.verdict p{margin:6px 0 0;font-family:var(--thai);font-size:12.5px;line-height:1.6;color:var(--ink-soft)}
+
+#loading{position:fixed;inset:0;display:grid;place-items:center;z-index:20;background:#070b16;transition:opacity 1.2s ease}
+#loading.done{opacity:0;pointer-events:none}
+#loading div{font-size:10px;letter-spacing:.4em;color:var(--muted)}
+#selftest{position:fixed;left:0;bottom:0;max-width:40vw;max-height:40vh;overflow:auto;z-index:30;background:#000c;color:#9f9;font-size:10px;margin:0;padding:6px}
+
+@media (max-width:860px){
+  .brand{left:20px;top:20px}.badge{right:20px;top:18px;font-size:9px}
+  .hero{left:20px;right:20px;top:auto;bottom:100px;transform:none;max-width:none}
+  body.sql-mode .hero{transform:translateY(20px)}
+  .hero h1{font-size:44px}.hero p{font-size:14px;max-width:none}
+  .telemetry{display:none}.credit{display:none}
+  .controls{left:20px;bottom:20px}
+  .sql{left:12px;right:12px;width:auto;top:auto;bottom:70px;max-height:56vh}
+  .lab{left:12px;right:12px;width:auto;top:auto;bottom:12px;transform:none;max-height:62vh}
+}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;animation:none!important}}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="scene" aria-label="Floating castle-town above the clouds. Drag to orbit, scroll to zoom."></canvas>
+<div id="labels"></div>
+
+<header class="ui brand">
+  <div class="brand-title">CASTLE ABOVE CLOUDS</div>
+  <div class="brand-sub">A DREAM IN THE SKY · REBUILT</div>
+  <div class="brand-sql">SQL WORLD / EXPLORE DATABASE</div>
+</header>
+<div class="ui badge"><i></i>REAL-TIME PBR SCENE</div>
+
+<section class="ui hero" id="hero">
+  <h1><span class="l">Above the clouds,</span><span class="m">there lives a castle.</span></h1>
+  <p>Drift slowly around eaves and towers, timber walkways and floating cottages. Moonlight skims the stone walls, and warm lamps come on in rooms where people live.</p>
+  <button class="explore" id="exploreBtn">EXPLORE SQL <span aria-hidden="true">→</span></button>
+</section>
+
+<aside class="ui sql" id="sqlPanel" aria-label="SQL explorer">
+  <header>
+    <span>SQL WORLD / EXPLORE DATABASE</span>
+    <span class="act">
+      <button class="icon-btn" id="collapseBtn" aria-label="Collapse SQL panel" aria-expanded="true"><svg viewBox="0 0 16 16"><path d="M3 10l5-5 5 5"/></svg></button>
+      <button class="icon-btn" id="leaveBtn" aria-label="Leave SQL mode"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+    </span>
+  </header>
+  <nav class="cats" id="cats" aria-label="SQL categories"></nav>
+  <div class="dock">
+    <div class="dock-head"><b id="catName">SELECT</b><span id="catTag"></span></div>
+    <p class="th" id="catThai"></p>
+    <textarea id="sqlInput" spellcheck="false" autocomplete="off" aria-label="SQL query"></textarea>
+    <div class="row">
+      <button class="btn run" id="runBtn">RUN</button>
+      <button class="btn" id="resetBtn">RESET</button>
+      <button class="btn" id="explainBtn" aria-expanded="false">EXPLAIN</button>
+    </div>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+    <div class="explain" id="explain" hidden></div>
+    <div class="textview" id="textview" hidden></div>
+  </div>
+</aside>
+
+<div class="ui hud" id="hud" aria-live="polite"></div>
+<div class="ui telemetry">Coordinates <b>32.7° N · 118.4° E</b><br>Moonlight · Breeze · Cloud layer 1,200 m</div>
+<div class="ui credit">STYLIZED WEB THREE.JS</div>
+<div class="ui controls" role="toolbar" aria-label="Camera">
+  <button id="zoomIn" aria-label="Zoom in"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>
+  <button id="zoomOut" aria-label="Zoom out"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
+  <button id="resetCam" aria-label="Reset camera"><svg viewBox="0 0 16 16"><path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3"/><path d="M3 2.5v3h3"/></svg></button>
+  <button id="orbitBtn" aria-label="Toggle auto orbit" aria-pressed="true"><svg viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="6" ry="2.6"/><circle cx="8" cy="8" r="1.4"/></svg></button>
+</div>
+
+<div id="tooltip" hidden></div>
+<aside id="inspector" hidden aria-live="polite"></aside>
+
+<section class="ui lab" id="lab" hidden aria-label="SQL injection lab">
+  <div class="kick">SQL INJECTION LAB · MOON TOWER</div>
+  <h2>Castle access terminal</h2>
+  <p class="th">ห้องทดลองนี้ใช้ฐานข้อมูลจำลองแยกต่างหากในเบราว์เซอร์ บัญชีทั้งหมดเป็นของสมมติ ลองใส่ข้อมูลเดียวกันในโหมด VULNERABLE และ PROTECTED แล้วดูว่าประตูตอบสนองต่างกันอย่างไร</p>
+  <div class="mode" role="group" aria-label="Query mode">
+    <button id="modeVuln" aria-pressed="true">VULNERABLE</button>
+    <button id="modeSafe" class="safe" aria-pressed="false">PROTECTED</button>
+  </div>
+  <label>USERNAME<input id="labUser" value="warden" autocomplete="off" spellcheck="false" /></label>
+  <label>PASSWORD<input id="labPass" value="" autocomplete="off" spellcheck="false" placeholder="try an input…" /></label>
+  <div class="presets">TRY
+    <button class="link" id="presetValid">valid login</button>
+    <button class="link" id="presetInject">injection payload</button>
+  </div>
+  <div class="row"><button class="btn run" id="labRun">TEST LOGIN</button><button class="btn" id="labReset">RESET LAB</button><button class="btn" id="labExit">EXIT LAB</button></div>
+  <div class="assembled" id="labSql"></div>
+  <div class="bound" id="labBound" hidden></div>
+  <div class="verdict" id="labVerdict" hidden></div>
+</section>
+<div id="veil"></div>
+<div id="loading"><div>RAISING THE CASTLE…</div></div>
+<pre id="selftest" hidden></pre>
+
+<script type="module">
+import * as THREE from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+
+/* =====================================================================
+   0. FLAGS · RANDOMNESS · NOISE
+   ===================================================================== */
+const params = new URLSearchParams(location.search)
+const SELFTEST = params.has('selftest')
+const INSTANT = params.has('instant') || SELFTEST
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches
+const $ = id => document.getElementById(id)
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296 } }
+function hash3(x, y, z, s) { let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(z | 0, 1274126177) ^ Math.imul(s | 0, 1103515245); h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296 }
+function noise3(x, y, z, s = 0) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf)
+  const L = (a, b, t) => a + (b - a) * t, h = (i, j, k) => hash3(xi + i, yi + j, zi + k, s)
+  return L(L(L(h(0,0,0), h(1,0,0), u), L(h(0,1,0), h(1,1,0), u), v), L(L(h(0,0,1), h(1,0,1), u), L(h(0,1,1), h(1,1,1), u), v), w)
+}
+function fbm(x, y, z, s = 0, oct = 4) { let a = 0, f = 1, amp = .5, n = 0; for (let i = 0; i < oct; i++) { a += amp * noise3(x * f, y * f, z * f, s + i * 17); n += amp; f *= 2.03; amp *= .5 } return a / n }
+const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+const clamp01 = t => Math.min(1, Math.max(0, t))
+
+/* =====================================================================
+   1. RENDERER · SCENE · CAMERA · POST
+   ===================================================================== */
+const canvas = $('scene')
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
+let pixelRatio = Math.min(devicePixelRatio, 2)
+renderer.setPixelRatio(pixelRatio)
+renderer.setSize(innerWidth, innerHeight)
+renderer.outputColorSpace = THREE.SRGBColorSpace
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1.22
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+
+const scene = new THREE.Scene()
+const FOG = new THREE.Color('#0e1528')
+scene.fog = new THREE.FogExp2(FOG, 0.0105)
+const camera = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.1, 1200)
+camera.position.set(17, 12.5, 28)
+
+const controls = new OrbitControls(camera, canvas)
+controls.target.set(0, 4, -1)
+controls.enableDamping = true
+controls.dampingFactor = 0.06
+controls.minDistance = 6
+controls.maxDistance = 95
+controls.maxPolarAngle = Math.PI * 0.62
+controls.autoRotateSpeed = 0.28
+controls.zoomSpeed = 0.7
+controls.rotateSpeed = 0.55
+
+const composer = new EffectComposer(renderer)
+composer.addPass(new RenderPass(scene, camera))
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.62, 0.55, 0.92)
+composer.addPass(bloom)
+composer.addPass(new OutputPass())
+
+/* =====================================================================
+   2. PROCEDURAL TEXTURES (seeded canvas)
+   ===================================================================== */
+function canvasTex(size, painter, { srgb = true, repeat = 1 } = {}) {
+  const c = document.createElement('canvas'); c.width = c.height = size
+  const g = c.getContext('2d'); painter(g, size)
+  const t = new THREE.CanvasTexture(c)
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat, repeat)
+  t.anisotropy = 4
+  return t
+}
+function pixels(g, size, fn) {
+  const img = g.createImageData(size, size), d = img.data
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) { const [r, gg, b] = fn(x, y); const i = (y * size + x) * 4; d[i] = r; d[i + 1] = gg; d[i + 2] = b; d[i + 3] = 255 }
+  g.putImageData(img, 0, 0)
+}
+const TEX = {}
+TEX.plaster = canvasTex(256, (g, s) => pixels(g, s, (x, y) => { const n = fbm(x / 34, y / 34, 0, 3, 4), f = noise3(x / 3, y / 3, 1, 9); const v = 222 + (n - .5) * 34 + (f - .5) * 10; return [v + 6, v + 2, v - 6] }))
+TEX.stone = canvasTex(256, (g, s) => pixels(g, s, (x, y) => {
+  const row = Math.floor(y / 32), off = (row % 2) * 24, col = Math.floor((x + off) / 48)
+  const bx = (x + off) % 48, by = y % 32, mortar = bx < 2 || by < 2
+  const tone = hash3(row, col, 0, 5), n = fbm(x / 12, y / 12, row, 7, 3)
+  if (mortar) return [96, 88, 78]
+  const v = 150 + tone * 45 + (n - .5) * 40; return [v + 8, v, v - 14]
+}))
+TEX.roof = canvasTex(256, (g, s) => pixels(g, s, (x, y) => {
+  const row = Math.floor(y / 16), off = (row % 2) * 10, bx = ((x + off) % 20) / 20, by = (y % 16) / 16
+  const scallop = Math.pow(by, 1.4) * (1 - Math.pow(Math.abs(bx - .5) * 2, 3) * .35)
+  const tone = hash3(row, Math.floor((x + off) / 20), 2, 11)
+  const v = 120 + scallop * 110 + tone * 26 - (by > .9 ? 60 : 0); return [v, v, v]
+}))
+TEX.wood = canvasTex(256, (g, s) => pixels(g, s, (x, y) => {
+  const plank = Math.floor(y / 32), grain = Math.sin(x / 5 + fbm(x / 60, y / 8, plank, 21, 3) * 9) * .5 + .5
+  const v = 120 + grain * 38 + hash3(plank, 0, 0, 4) * 30 - (y % 32 < 1 ? 50 : 0); return [v + 38, v + 6, v - 30]
+}))
+TEX.grass = canvasTex(256, (g, s) => pixels(g, s, (x, y) => { const n = fbm(x / 22, y / 22, 0, 31, 4), f = noise3(x / 2.5, y / 2.5, 0, 33); const v = .65 + n * .5 + (f - .5) * .25; return [74 * v, 104 * v, 58 * v] }), { repeat: 3 })
+TEX.rock = canvasTex(256, (g, s) => pixels(g, s, (x, y) => { const n = fbm(x / 18, y / 18, 0, 41, 5), c = noise3(x / 4, y / 4, 0, 43); const v = 110 + n * 120 + (c - .5) * 40; return [v, v * .98, v * .95] }), { srgb: true, repeat: 2 })
+TEX.window = canvasTex(64, (g, s) => {
+  const grad = g.createRadialGradient(s / 2, s * .55, 2, s / 2, s / 2, s * .7)
+  grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#b7a28a'); g.fillStyle = grad; g.fillRect(0, 0, s, s)
+  g.fillStyle = '#2a1a10'; g.fillRect(s / 2 - 2, 0, 4, s); g.fillRect(0, s * .45, s, 4)
+  g.strokeStyle = '#2a1a10'; g.lineWidth = 6; g.strokeRect(0, 0, s, s)
+})
+TEX.awning = canvasTex(128, (g, s) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#e9dcc2' : '#a8392e'; g.fillRect(i * s / 8, 0, s / 8, s) } })
+TEX.cloud = canvasTex(256, (g, s) => {
+  const rnd = mulberry32(77)
+  for (let i = 0; i < 26; i++) {
+    const x = s * (.22 + rnd() * .56), y = s * (.38 + rnd() * .3), r = s * (.1 + rnd() * .2)
+    const gr = g.createRadialGradient(x, y, 0, x, y, r)
+    gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(.6, 'rgba(255,255,255,.18)'); gr.addColorStop(1, 'rgba(255,255,255,0)')
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill()
+  }
+}, { srgb: true })
+TEX.cloud.wrapS = TEX.cloud.wrapT = THREE.ClampToEdgeWrapping
+TEX.glow = canvasTex(64, (g, s) => { const gr = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.25, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, s, s) })
+TEX.glow.wrapS = TEX.glow.wrapT = THREE.ClampToEdgeWrapping
+TEX.moon = canvasTex(256, (g, s) => pixels(g, s, (x, y) => { const n = fbm(x / 40, y / 40, 0, 61, 5), m = fbm(x / 14, y / 14, 0, 63, 3); const v = 214 + (n - .5) * 70 - (m > .62 ? 28 : 0); return [v, v, v * .97] }))
+
+/* =====================================================================
+   3. MATERIALS
+   ===================================================================== */
+const MAT = {
+  plaster: new THREE.MeshStandardMaterial({ map: TEX.plaster, color: '#f1ebe0', roughness: .93 }),
+  plasterWarm: new THREE.MeshStandardMaterial({ map: TEX.plaster, color: '#e9dcc6', roughness: .93 }),
+  stone: new THREE.MeshStandardMaterial({ map: TEX.stone, color: '#d2bea3', roughness: .86 }),
+  stoneDark: new THREE.MeshStandardMaterial({ map: TEX.stone, color: '#9c8a74', roughness: .9 }),
+  wood: new THREE.MeshStandardMaterial({ map: TEX.wood, color: '#a8724a', roughness: .74 }),
+  woodDark: new THREE.MeshStandardMaterial({ map: TEX.wood, color: '#6a4630', roughness: .8 }),
+  iron: new THREE.MeshStandardMaterial({ color: '#2b2c31', metalness: .75, roughness: .42 }),
+  grass: new THREE.MeshStandardMaterial({ map: TEX.grass, color: '#a9c08a', roughness: .96 }),
+  path: new THREE.MeshStandardMaterial({ map: TEX.stone, color: '#b8a58c', roughness: .9 }),
+  rock: new THREE.MeshStandardMaterial({ map: TEX.rock, vertexColors: true, roughness: .97 }),
+  root: new THREE.MeshStandardMaterial({ color: '#3a2b20', roughness: 1 }),
+  flag: new THREE.MeshStandardMaterial({ color: '#e7c04a', roughness: .78, side: THREE.DoubleSide }),
+  awning: new THREE.MeshStandardMaterial({ map: TEX.awning, roughness: .85, side: THREE.DoubleSide }),
+  flower: new THREE.MeshStandardMaterial({ color: '#c8576a', roughness: .8 }),
+  leaf: new THREE.MeshStandardMaterial({ color: '#4d6b3a', roughness: .9 }),
+  door: new THREE.MeshStandardMaterial({ map: TEX.wood, color: '#5b3a26', roughness: .78 }),
+  shutter: new THREE.MeshStandardMaterial({ map: TEX.wood, color: '#5f7a6a', roughness: .8 }),
+  glass: new THREE.MeshStandardMaterial({ color: '#ffcf8f', emissive: '#ffb066', emissiveIntensity: 2.4, roughness: .3 }),
+  stringBulb: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 1.55, .72), toneMapped: false }),
+  wire: new THREE.LineBasicMaterial({ color: '#1c1a18' }),
+}
+const ROOF_HEX = { red: '#a2362b', green: '#56713f', slate: '#4d5d72', brown: '#6e4a31', cream: '#d8c7a0' }
+function roofMaterial(color) {
+  return new THREE.MeshPhysicalMaterial({ map: TEX.roof, color: ROOF_HEX[color] ?? '#8a7a6a', roughness: .52, clearcoat: .3, clearcoatRoughness: .45 })
+}
+
+/* =====================================================================
+   4. SKY · MOON · STARS · LIGHTS
+   ===================================================================== */
+const MOON_DIR = new THREE.Vector3(-0.44, 0.15, -0.885).normalize()
+const sky = new THREE.Mesh(new THREE.SphereGeometry(600, 32, 16), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color('#02040a') }, mid: { value: new THREE.Color('#060c1b') }, horizon: { value: new THREE.Color('#111a31') }, moonDir: { value: MOON_DIR } },
+  vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; uniform vec3 moonDir; varying vec3 vDir;
+    void main(){ float h = vDir.y; vec3 c = mix(horizon, mid, smoothstep(-0.05, 0.22, h)); c = mix(c, top, smoothstep(0.22, 0.85, h));
+      float m = max(dot(normalize(vDir), normalize(moonDir)), 0.0);
+      c += vec3(0.30,0.36,0.52) * pow(m, 40.0) * 0.42 + vec3(0.16,0.2,0.32) * pow(m, 6.0) * 0.2;
+      c = mix(c, horizon * 0.8, smoothstep(0.0, -0.5, h));
+      gl_FragColor = vec4(c, 1.0); }`,
+}))
+sky.renderOrder = -10
+scene.add(sky)
+
+{ // stars
+  const rnd = mulberry32(9), n = 420, pos = new Float32Array(n * 3)
+  for (let i = 0; i < n; i++) { const th = rnd() * Math.PI * 2, y = .08 + rnd() * .92, r = Math.sqrt(1 - y * y); pos.set([Math.cos(th) * r * 560, y * 560, Math.sin(th) * r * 560], i * 3) }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  const stars = new THREE.Points(g, new THREE.PointsMaterial({ color: '#cdd6f5', size: 1.5, sizeAttenuation: false, transparent: true, opacity: .75, fog: false, depthWrite: false }))
+  stars.renderOrder = -9; sky.add(stars)
+}
+const moon = new THREE.Mesh(new THREE.SphereGeometry(17, 48, 32), new THREE.MeshBasicMaterial({ map: TEX.moon, color: new THREE.Color(1.12, 1.1, 1.02), fog: false, toneMapped: false }))
+moon.position.copy(MOON_DIR).multiplyScalar(330)
+scene.add(moon)
+const moonHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: '#8fa3d8', transparent: true, opacity: .32, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }))
+moonHalo.scale.setScalar(130); moonHalo.position.copy(moon.position); scene.add(moonHalo)
+
+const moonLight = new THREE.DirectionalLight('#b8c6ff', 2.1)
+moonLight.position.set(-24, 30, -36)
+moonLight.castShadow = true
+moonLight.shadow.mapSize.set(2048, 2048)
+Object.assign(moonLight.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16, near: 10, far: 110 })
+moonLight.shadow.bias = -0.0004
+moonLight.shadow.normalBias = 0.03
+scene.add(moonLight, moonLight.target)
+scene.add(new THREE.HemisphereLight('#3d4c7c', '#0c0d14', 0.62))
+const fill = new THREE.DirectionalLight('#7d8cc4', 0.85); fill.position.set(30, 16, 34); scene.add(fill)
+
+/* =====================================================================
+   5. THE WORLD DATA — one source of truth for SQLite rows AND geometry
+   Every row below is built as a real object in the scene with a stable id.
+   ===================================================================== */
+const WORLD = {
+  islands: [
+    { id: 1, name: 'Castle Isle',  altitude: 1200, district: 'Keep',     x: 0,   z: 0,   r: 9.6, depth: 12,  seed: 101 },
+    { id: 2, name: 'Ember Rest',   altitude: 1206, district: 'Hearth',   x: 18,  z: -7,  r: 3.3, depth: 5.6, seed: 202 },
+    { id: 3, name: 'Porchlight',   altitude: 1192, district: 'Porch',    x: -16, z: 8,   r: 3.6, depth: 6.2, seed: 303 },
+    { id: 4, name: 'Lantern Rock', altitude: 1178, district: 'Lanterns', x: 9,   z: 17,  r: 2.3, depth: 4.8, seed: 404 },
+    { id: 5, name: 'Flag Spire',   altitude: 1224, district: 'Watch',    x: -9,  z: -17, r: 2.0, depth: 4.4, seed: 505 },
+    { id: 6, name: 'Millbrook',    altitude: 1196, district: 'Market',   x: 25,  z: 11,  r: 5.4, depth: 8.2, seed: 606 },
+    { id: 7, name: 'Thornwick',    altitude: 1216, district: 'Archive',  x: -24, z: -7,  r: 5.1, depth: 7.6, seed: 707 },
+  ],
+  buildings: [
+    { id: 1,  island_id: 1, name: 'Great Keep',        type: 'keep',    roof_color: 'red',   occupied: 1 },
+    { id: 2,  island_id: 1, name: 'Moon Tower',        type: 'tower',   roof_color: 'red',   occupied: 1 },
+    { id: 3,  island_id: 1, name: 'East Tower',        type: 'tower',   roof_color: 'red',   occupied: 1 },
+    { id: 4,  island_id: 1, name: 'West Tower',        type: 'tower',   roof_color: 'red',   occupied: 1 },
+    { id: 5,  island_id: 1, name: 'Green Hall',        type: 'hall',    roof_color: 'green', occupied: 1 },
+    { id: 6,  island_id: 1, name: 'Market Stall',      type: 'stall',   roof_color: 'cream', occupied: 0 },
+    { id: 7,  island_id: 1, name: 'Lamplighter House', type: 'cottage', roof_color: 'slate', occupied: 1 },
+    { id: 8,  island_id: 2, name: 'Ember Cottage',     type: 'cottage', roof_color: 'red',   occupied: 1 },
+    { id: 9,  island_id: 3, name: 'Porch House',       type: 'house',   roof_color: 'slate', occupied: 1 },
+    { id: 10, island_id: 5, name: 'Flag Spire',        type: 'tower',   roof_color: 'red',   occupied: 0 },
+    { id: 11, island_id: 6, name: 'Mill House',        type: 'house',   roof_color: 'green', occupied: 1 },
+    { id: 12, island_id: 6, name: "Baker's Rest",      type: 'cottage', roof_color: 'red',   occupied: 1 },
+    { id: 13, island_id: 6, name: 'Weaver Cottage',    type: 'cottage', roof_color: 'slate', occupied: 1 },
+    { id: 14, island_id: 6, name: 'Tall Barn',         type: 'barn',    roof_color: 'brown', occupied: 0 },
+    { id: 15, island_id: 7, name: 'Scribe Hall',       type: 'hall',    roof_color: 'slate', occupied: 1 },
+    { id: 16, island_id: 7, name: 'Thorn Cottage',     type: 'cottage', roof_color: 'green', occupied: 1 },
+    { id: 17, island_id: 7, name: 'Watch Hut',         type: 'cottage', roof_color: 'brown', occupied: 0 },
+  ],
+  residents: [
+    [1, 1, 'Aurel Vane', 'steward', 58], [2, 1, 'Mira Vane', 'astronomer', 54], [3, 2, 'Sefa Lune', 'archivist', 31],
+    [4, 3, 'Tomas Reed', 'bellkeeper', 46], [5, 4, 'Ila Brand', 'cartographer', 29], [6, 5, 'Oren Pike', 'cook', 41],
+    [7, 5, 'Nell Pike', 'gardener', 38], [8, 7, 'Bram Hollow', 'lamplighter', 63], [9, 8, 'Rosa Ember', 'potter', 35],
+    [10, 9, 'Kit Marlow', 'weaver', 27], [11, 9, 'June Marlow', 'weaver', 25], [12, 11, 'Hugo Crane', 'miller', 52],
+    [13, 12, 'Petra Bloom', 'baker', 44], [14, 13, 'Lio Fenn', 'dyer', 33], [15, 15, 'Odile Quill', 'scribe', 47],
+    [16, 15, 'Yan Quill', 'apprentice', 19], [17, 16, 'Wren Thorn', 'herbalist', 36],
+  ].map(([id, building_id, name, occupation, age]) => ({ id, building_id, name, occupation, age })),
+  lanterns: [
+    [1, 6, null, 0.8, 1], [2, 1, null, 0.55, 1], [3, 9, null, 0.9, 1], [4, 8, null, 0.7, 1], [5, null, 4, 0.85, 1],
+    [6, 11, null, 0.6, 1], [7, 12, null, 0.75, 1], [8, 15, null, 0.65, 1], [9, 17, null, 0.5, 0], [10, 7, null, 0.9, 1], [11, 5, null, 0.7, 1],
+  ].map(([id, building_id, island_id, brightness, active]) => ({ id, building_id, island_id, brightness, active })),
+  routes: [
+    [1, 1, 2, 'lantern path'], [2, 1, 3, 'timber bridge'], [3, 1, 4, 'sky ferry'], [4, 1, 5, 'lantern path'], [5, 1, 6, 'timber bridge'],
+    [6, 1, 7, 'lantern path'], [7, 6, 2, 'sky ferry'], [8, 7, 5, 'lantern path'], [9, 3, 7, 'sky ferry'],
+  ].map(([id, from_island_id, to_island_id, route_type]) => ({ id, from_island_id, to_island_id, route_type })),
+}
+const altY = a => (a - 1200) * 0.38
+
+/* =====================================================================
+   6. GEOMETRY HELPERS
+   ===================================================================== */
+function mesh(geo, mat, cast = true, receive = true) { const m = new THREE.Mesh(geo, mat); m.castShadow = cast; m.receiveShadow = receive; return m }
+function uvBox(geo, w, h, d, k = .9) {
+  const uv = geo.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]]
+  for (let f = 0; f < 6; f++) for (let v = 0; v < 4; v++) { const i = f * 4 + v; uv.setXY(i, uv.getX(i) * dims[f][0] * k, uv.getY(i) * dims[f][1] * k) }
+  return geo
+}
+function box(w, h, d, mat, x, y, z, cast = true) { const m = mesh(uvBox(new THREE.BoxGeometry(w, h, d), w, h, d), mat, cast); m.position.set(x, y, z); return m }
+function cyl(rt, rb, h, mat, x, y, z, seg = 22, cast = true) {
+  const g = new THREE.CylinderGeometry(rt, rb, h, seg), uv = g.attributes.uv, k = Math.PI * 2 * Math.max(rt, rb) * .45
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * k, uv.getY(i) * h * .45)
+  const m = mesh(g, mat, cast); m.position.set(x, y, z); return m
+}
+function cone(r, h, mat, x, y, z, seg = 24) {
+  const g = new THREE.ConeGeometry(r, h, seg, 1), uv = g.attributes.uv
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * r * 3.2, uv.getY(i) * h * 1.2)
+  const m = mesh(g, mat); m.position.set(x, y, z); return m
+}
+function marker(parent, kind, x, y, z, data = {}) { const o = new THREE.Object3D(); o.position.set(x, y, z); o.userData[kind] = data; parent.add(o); return o }
+
+/* window markers become instanced quads later; one batch per island */
+function win(parent, b, x, y, z, ry, w = .32, h = .46) { const o = marker(parent, 'win', x, y, z, { b, w, h }); o.rotation.y = ry; return o }
+function wallWindows(parent, b, w, d, ys, counts, size = [.32, .46]) {
+  const [nf, nb, nr, nl] = counts
+  const put = (n, len, fn) => { for (let i = 0; i < n; i++) fn((i + 1) / (n + 1) * len - len / 2) }
+  for (const y of ys) {
+    put(nf, w, x => win(parent, b, x, y, d / 2 + .012, 0, ...size))
+    put(nb, w, x => win(parent, b, x, y, -d / 2 - .012, Math.PI, ...size))
+    put(nr, d, z => win(parent, b, w / 2 + .012, y, z, Math.PI / 2, ...size))
+    put(nl, d, z => win(parent, b, -w / 2 - .012, y, z, -Math.PI / 2, ...size))
+  }
+}
+function ringWindows(parent, b, r, ys, n, a0 = 0, size = [.26, .42]) {
+  for (const [k, y] of ys.entries()) for (let i = 0; i < n; i++) {
+    const a = a0 + (i + (k % 2) * .5) / n * Math.PI * 2
+    win(parent, b, Math.sin(a) * (r + .012), y, Math.cos(a) * (r + .012), a, ...size)
+  }
+}
+
+/* =====================================================================
+   7. ARCHITECTURE KIT (procedural, hand-authored proportions)
+   ===================================================================== */
+const roofMats = new Map()   // building id -> roof material (so UPDATE roof_color can recolour it)
+const flags = []
+function roofFor(b) { if (!roofMats.has(b.id)) roofMats.set(b.id, roofMaterial(b.roof_color)); return roofMats.get(b.id) }
+
+function gableRoof(g, mat, w, d, wallTop, pitch = .85, oh = .22) {
+  const rh = pitch * d / 2, half = d / 2 + oh, ang = Math.atan(rh / (d / 2)), len = half / Math.cos(ang)
+  for (const s of [1, -1]) {
+    const slab = box(w + oh * 2, .1, len + .04, mat, 0, 0, 0)
+    slab.rotation.x = s * ang
+    slab.position.set(0, wallTop + rh - Math.sin(ang) * len / 2 + .05, s * Math.cos(ang) * len / 2)
+    g.add(slab)
+    const gutter = cyl(.035, .035, w + oh * 2, MAT.iron, 0, wallTop + rh - Math.sin(ang) * len - .02, s * (half + .02), 8)
+    gutter.rotation.z = Math.PI / 2; g.add(gutter)
+  }
+  const ridge = cyl(.07, .07, w + oh * 2 + .04, mat, 0, wallTop + rh + .07, 0, 10); ridge.rotation.z = Math.PI / 2; g.add(ridge)
+  const tri = new THREE.Shape([new THREE.Vector2(-d / 2, 0), new THREE.Vector2(d / 2, 0), new THREE.Vector2(0, rh)])
+  for (const s of [1, -1]) {
+    const gm = mesh(new THREE.ExtrudeGeometry(tri, { depth: .06, bevelEnabled: false }), MAT.plaster)
+    gm.rotation.y = Math.PI / 2; gm.position.set(s * w / 2 - (s > 0 ? .06 : 0), wallTop, 0); g.add(gm)
+  }
+  return rh
+}
+function flowerBox(g, x, y, z, ry) {
+  const fb = box(.42, .1, .12, MAT.wood, 0, 0, 0); const holder = new THREE.Group(); holder.position.set(x, y, z); holder.rotation.y = ry; holder.add(fb)
+  for (let i = 0; i < 4; i++) { const f = mesh(new THREE.IcosahedronGeometry(.055, 0), i % 2 ? MAT.flower : MAT.leaf, false); f.position.set(-.15 + i * .1, .08, 0); holder.add(f) }
+  fb.position.z = .03; g.add(holder)
+}
+function shutters(g, x, y, z, ry, w = .32, h = .46) {
+  const holder = new THREE.Group(); holder.position.set(x, y, z); holder.rotation.y = ry
+  for (const s of [-1, 1]) holder.add(box(.13, h, .03, MAT.shutter, s * (w / 2 + .085), 0, .02, false))
+  g.add(holder)
+}
+
+function cottage(b, o) {
+  const { w = 2.2, d = 1.8, h = 1.5, pitch = .9, chimney = true, flowers = true, door = true, walls = MAT.plaster, rows = 1 } = o
+  const g = new THREE.Group(), base = .32, top = base + h
+  g.add(box(w + .12, base, d + .12, MAT.stone, 0, base / 2, 0))
+  g.add(box(w, h, d, walls, 0, base + h / 2, 0))
+  const rh = gableRoof(g, roofFor(b), w, d, top, pitch)
+  if (chimney) { g.add(box(.34, 1.0 + rh * .5, .34, MAT.stone, w * .28, top + rh * .45, -d * .2)); g.add(box(.42, .1, .42, MAT.stoneDark, w * .28, top + rh * .45 + (1 + rh * .5) / 2, -d * .2)) }
+  if (door) { g.add(box(.46, .82, .06, MAT.door, w * -.18, base + .41, d / 2 + .03)); g.add(box(.6, .06, .2, MAT.stone, w * -.18, base + .86, d / 2 + .08)) }
+  const ys = []; for (let r = 0; r < rows; r++) ys.push(base + h * (rows === 1 ? .56 : .32 + r * .42))
+  const nf = w > 2 ? 2 : 1
+  wallWindows(g, b.id, w, d, ys, [nf, nf, 1, 1])
+  win(g, b.id, -w / 2 - .012, top + rh * .3, 0, -Math.PI / 2, .24, .3)
+  for (const y of ys) for (let i = 0; i < nf; i++) {
+    const x = (i + 1) / (nf + 1) * w - w / 2
+    if (Math.abs(x - w * -.18) < .4 && y < base + .9) continue
+    shutters(g, x, y, d / 2 + .012, 0); if (flowers && y === ys[0]) flowerBox(g, x, y - .3, d / 2 + .02, 0)
+  }
+  marker(g, 'slot', w * .1, base + 1.05, d / 2 + .16, { style: 'wall' })
+  marker(g, 'slot', -w / 2 - .16, base + 1.05, d * .2, { style: 'wall', ry: -Math.PI / 2 })
+  marker(g, 'slot', w / 2 + .16, base + 1.05, -d * .2, { style: 'wall', ry: Math.PI / 2 })
+  marker(g, 'anchor', 0, top + rh + .55, 0)
+  return g
+}
+function barn(b) {
+  const g = cottage(b, { w: 2.6, d: 2.0, h: 2.0, pitch: 1.05, chimney: false, flowers: false, door: false, walls: MAT.woodDark })
+  g.add(box(.9, 1.3, .06, MAT.door, 0, .32 + .65, 1.03))
+  return g
+}
+function house(b, o = {}) {
+  const g = cottage(b, { rows: 2, h: 2.3, ...o })
+  if (o.porch) {
+    const { w = 2.2, d = 1.8 } = o
+    g.add(box(w * .8, .14, .9, MAT.wood, -w * .05, .32, d / 2 + .45))
+    for (const s of [-1, 1]) g.add(cyl(.05, .05, 1.2, MAT.woodDark, -w * .05 + s * w * .36, .92, d / 2 + .82, 8))
+    const lean = box(w * .86, .07, 1.05, roofFor(b), -w * .05, 1.6, d / 2 + .5); lean.rotation.x = .28; g.add(lean)
+    marker(g, 'slot', -w * .05 + w * .36, 1.3, d / 2 + .95, { style: 'hang', porch: true })
+  }
+  return g
+}
+function tower(b, o) {
+  const { r = .85, h = 6, roofH = 2.4, rows = 2, perRow = 4, slit = false, base = .9, a0 = 0 } = o
+  const g = new THREE.Group()
+  g.add(cyl(r * 1.1, r * 1.16, base, MAT.stone, 0, base / 2, 0, 24))
+  g.add(cyl(r, r, h, MAT.plaster, 0, base + h / 2, 0, 28))
+  g.add(cyl(r * 1.14, r * 1.02, .22, MAT.stone, 0, base + h + .05, 0, 28))
+  g.add(cone(r * 1.32, roofH, roofFor(b), 0, base + h + .16 + roofH / 2, 0, 28))
+  const peak = base + h + .16 + roofH
+  g.add(cyl(.025, .025, .9, MAT.iron, 0, peak + .4, 0, 6))
+  addFlag(g, 0, peak + .82, 0, .55, .3)
+  const ys = []; for (let i = 0; i < rows; i++) ys.push(base + h * (.3 + i * (.55 / Math.max(1, rows - 1 || 1))))
+  ringWindows(g, b.id, r, ys, perRow, a0, slit ? [.11, .55] : [.26, .42])
+  marker(g, 'slot', Math.sin(a0) * (r * 1.16 + .14), base + .55, Math.cos(a0) * (r * 1.16 + .14), { style: 'wall', ry: a0 })
+  marker(g, 'slot', Math.sin(a0 + 1.2) * (r * 1.16 + .14), base + .55, Math.cos(a0 + 1.2) * (r * 1.16 + .14), { style: 'wall', ry: a0 + 1.2 })
+  marker(g, 'slot', Math.sin(a0 - 1.2) * (r * 1.16 + .14), base + .55, Math.cos(a0 - 1.2) * (r * 1.16 + .14), { style: 'wall', ry: a0 - 1.2 })
+  marker(g, 'anchor', 0, peak + 1.2, 0)
+  marker(g, 'slitView', Math.sin(a0) * (r + 2.6), base + h * .62, Math.cos(a0) * (r + 2.6))
+  return g
+}
+function keep(b) {
+  const g = new THREE.Group(), W = 3.4, H = 5.6, base = 1.0
+  g.add(box(W + .4, base, W + .4, MAT.stone, 0, base / 2, 0))
+  g.add(box(W, H, W, MAT.plaster, 0, base + H / 2, 0))
+  g.add(box(W + .3, .24, W + .3, MAT.stone, 0, base + H + .02, 0))
+  const hip = cone(W * .82, 1.5, roofFor(b), 0, base + H + .14 + .75, 0, 4); hip.rotation.y = Math.PI / 4; g.add(hip)
+  g.add(cyl(.62, .7, 1.2, MAT.plaster, 0, base + H + 1.4, 0, 16))
+  g.add(cone(.92, 5.2, roofFor(b), 0, base + H + 2.0 + 2.6, 0, 16))
+  g.add(cyl(.025, .025, 1.0, MAT.iron, 0, base + H + 5.2 + 2.0 + .45, 0, 6))
+  addFlag(g, 0, base + H + 7.6, 0, .7, .38)
+  wallWindows(g, b.id, W, W, [base + 1.6, base + 3.1, base + 4.6], [2, 2, 2, 2], [.34, .52])
+  win(g, b.id, 0, base + H + 1.45, .64, 0, .22, .36)
+  g.add(box(.9, 1.4, .1, MAT.door, 0, base + .7, W / 2 + .05))
+  const arch = cyl(.45, .45, .1, MAT.door, 0, base + 1.4, W / 2 + .05, 16, false); arch.rotation.x = Math.PI / 2; g.add(arch)
+  for (const [x, y, z] of [[W * .22, base + 1.6, W / 2 + .012], [-W * .22, base + 3.1, W / 2 + .012]]) flowerBox(g, x, y - .36, z + .01, 0)
+  marker(g, 'slot', W * .42, base + 1.0, W / 2 + .2, { style: 'wall' })
+  marker(g, 'slot', -W * .42, base + 1.0, W / 2 + .2, { style: 'wall' })
+  marker(g, 'slot', W / 2 + .2, base + 1.0, W * .3, { style: 'wall', ry: Math.PI / 2 })
+  marker(g, 'anchor', 0, base + H + 8.6, 0)
+  return g
+}
+function hall(b, o = {}) {
+  const { w = 3.8, d = 2.3, h = 2.8, balcony = false } = o
+  const g = new THREE.Group(), base = .3, top = base + h
+  g.add(box(w + .12, base, d + .12, MAT.stone, 0, base / 2, 0))
+  g.add(box(w, h, d, MAT.plasterWarm, 0, base + h / 2, 0))
+  const rh = gableRoof(g, roofFor(b), w, d, top, .8)
+  g.add(box(.36, 1.3, .36, MAT.stone, -w * .3, top + rh * .5, -d * .15)); g.add(box(.44, .1, .44, MAT.stoneDark, -w * .3, top + rh * .5 + .65, -d * .15))
+  wallWindows(g, b.id, w, d, [base + h * .3, base + h * .72], [3, 3, 1, 1])
+  g.add(box(.6, 1.0, .06, MAT.door, 0, base + .5, d / 2 + .03))
+  if (balcony) {
+    const by = base + h * .55
+    g.add(box(w * .7, .1, .8, MAT.wood, 0, by, d / 2 + .4))
+    for (let i = 0; i <= 6; i++) g.add(cyl(.025, .025, .55, MAT.woodDark, -w * .35 + i * w * .7 / 6, by + .3, d / 2 + .78, 6, false))
+    g.add(box(w * .7, .05, .05, MAT.wood, 0, by + .58, d / 2 + .78))
+    for (const s of [-1, 1]) g.add(box(.06, .06, .8, MAT.woodDark, s * w * .3, by - .2, d / 2 + .4))
+    marker(g, 'balcony', w * .35, by, d / 2 + .4)
+  }
+  marker(g, 'slot', w * .3, base + 1.1, d / 2 + .16, { style: 'wall' })
+  marker(g, 'slot', -w * .3, base + 1.1, d / 2 + .16, { style: 'wall' })
+  marker(g, 'slot', w / 2 + .16, base + 1.1, 0, { style: 'wall', ry: Math.PI / 2 })
+  marker(g, 'anchor', 0, top + rh + .6, 0)
+  return g
+}
+function stall(b) {
+  const g = new THREE.Group()
+  g.add(box(1.8, .75, .7, MAT.wood, 0, .375, 0))
+  for (const [x, z] of [[-.9, -.4], [.9, -.4], [-.9, .45], [.9, .45]]) g.add(cyl(.04, .04, 1.9, MAT.woodDark, x, .95, z, 8))
+  const aw = mesh(new THREE.PlaneGeometry(2.2, 1.3), MAT.awning); aw.rotation.x = -Math.PI / 2 + .42; aw.position.set(0, 1.9, .15); g.add(aw)
+  for (let i = 0; i < 5; i++) g.add(box(.3, .22, .3, MAT.wood, -.6 + i * .3, .86, -.05 + (i % 2) * .08))
+  for (let i = 0; i < 3; i++) { const fruit = mesh(new THREE.IcosahedronGeometry(.08, 1), i === 1 ? MAT.leaf : MAT.flower); fruit.position.set(-.5 + i * .5, 1.02, .02); g.add(fruit) }
+  g.add(box(.4, .4, .4, MAT.woodDark, 1.25, .2, .3)); g.add(box(.32, .32, .32, MAT.wood, 1.3, .56, .25))
+  marker(g, 'slot', .75, 1.55, .78, { style: 'hang' })
+  marker(g, 'slot', -.75, 1.55, .78, { style: 'hang' })
+  marker(g, 'anchor', 0, 2.6, 0)
+  return g
+}
+function addFlag(parent, x, y, z, w, h) {
+  const geo = new THREE.PlaneGeometry(w, h, 10, 3); geo.translate(w / 2, 0, 0)
+  const m = mesh(geo, MAT.flag, true, false); m.position.set(x, y, z); parent.add(m)
+  flags.push({ geo, base: geo.attributes.position.array.slice(), phase: flags.length * 1.7, w })
+}
+
+/* =====================================================================
+   8. FLOATING ISLANDS (irregular rock undersides, grass caps, roots)
+   ===================================================================== */
+function outline(def, n = 56) {
+  const out = []
+  for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; out.push(def.r * (0.86 + fbm(Math.cos(a) * 1.3 + 5, Math.sin(a) * 1.3, def.seed * .01, def.seed, 3) * .34)) }
+  return out
+}
+function islandBody(def, rad, { cap = 0 } = {}) {
+  const N = rad.length, M = 18, depth = def.depth, verts = [], cols = [], idx = []
+  for (let j = 0; j <= M; j++) {
+    const t = j / M, prof = j === 0 ? 1 : Math.pow(1 - t, .78) * (1 + .1 * Math.sin(t * 8 + def.seed)) * (j === 1 ? 1.02 : 1)
+    for (let i = 0; i < N; i++) {
+      const a = i / N * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a)
+      const n = fbm(ca * 1.6 + 3, t * 2.6, sa * 1.6, def.seed, 4)
+      const rr = j === 0 ? rad[i] : rad[i] * prof * (.8 + n * .42)
+      const y = j === 0 ? cap : -depth * Math.pow(t, 1.12) + (j < M ? (noise3(ca * 2.4, t * 6, sa * 2.4, def.seed + 9) - .5) * depth * .1 : 0) - (j === 1 ? .35 : 0)
+      verts.push(ca * rr, y, sa * rr)
+      let c = [.36, .37, .41].map(v => v * (.72 + n * .55))
+      if (t < .07) c = [.32, .25, .19]
+      else if (t < .5 && noise3(ca * 3, t * 4, sa * 3, def.seed + 3) > .58) c = [.24, .31, .19]
+      cols.push(...c)
+    }
+  }
+  const tip = verts.length / 3; verts.push(0, -depth - .5, 0); cols.push(.2, .2, .22)
+  const v = (j, i) => j * N + (i % N)
+  for (let j = 0; j < M; j++) for (let i = 0; i < N; i++) { const a = v(j, i), b = v(j + 1, i), c = v(j, i + 1), d = v(j + 1, i + 1); idx.push(a, c, b, c, d, b) }
+  for (let i = 0; i < N; i++) idx.push(v(M, i), v(M, i + 1), tip)
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3))
+  const uvs = []; for (let k = 0; k < verts.length / 3; k++) uvs.push(Math.atan2(verts[k * 3 + 2], verts[k * 3]) * 1.4, verts[k * 3 + 1] * .35)
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); g.setIndex(idx); g.computeVertexNormals()
+  return g
+}
+function capShape(rad, scale = 1) {
+  const N = rad.length, pts = []; for (let i = 0; i < N; i++) { const a = i / N * Math.PI * 2; pts.push(new THREE.Vector2(Math.cos(a) * rad[i] * scale, -Math.sin(a) * rad[i] * scale)) }
+  const g = new THREE.ShapeGeometry(new THREE.Shape(pts), 2); g.rotateX(-Math.PI / 2)
+  const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * .22, uv.getY(i) * .22)
+  return g
+}
+function makeLanternMesh(style) {
+  const g = new THREE.Group(), glass = MAT.glass.clone()
+  const body = mesh(new THREE.CylinderGeometry(.075, .075, .17, 8), glass, false, false)
+  g.add(body)
+  const cap = mesh(new THREE.ConeGeometry(.12, .11, 8), MAT.iron, true, false); cap.position.y = .14; g.add(cap)
+  const foot = mesh(new THREE.CylinderGeometry(.095, .08, .035, 8), MAT.iron, false, false); foot.position.y = -.1; g.add(foot)
+  if (style === 'hang') { const ch = mesh(new THREE.CylinderGeometry(.008, .008, .5, 4), MAT.iron, false, false); ch.position.y = .44; g.add(ch) }
+  if (style === 'wall') { const arm = mesh(new THREE.BoxGeometry(.03, .03, .22), MAT.iron, false, false); arm.position.set(0, .2, -.11); g.add(arm) }
+  if (style === 'post') { const p = mesh(new THREE.CylinderGeometry(.035, .045, 1.1, 8), MAT.woodDark); p.position.y = -.65; g.add(p) }
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: '#ffb46a', transparent: true, opacity: .5, depthWrite: false, blending: THREE.AdditiveBlending }))
+  halo.scale.setScalar(1.1); g.add(halo)
+  return { group: g, glass, halo }
+}
+function roots(group, def, rad, count, rnd) {
+  for (let k = 0; k < count; k++) {
+    const a = rnd() * Math.PI * 2, i = Math.floor(a / (Math.PI * 2) * rad.length), r0 = rad[i] * (.55 + rnd() * .25), y0 = -def.depth * (.18 + rnd() * .2)
+    const p0 = new THREE.Vector3(Math.cos(a) * r0, y0, Math.sin(a) * r0), len = 1.2 + rnd() * 2.2
+    const pts = [p0]; for (let s = 1; s <= 4; s++) pts.push(p0.clone().add(new THREE.Vector3((rnd() - .5) * .5, -len * s / 4, (rnd() - .5) * .5)))
+    group.add(mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 10, .025 + rnd() * .03, 5), MAT.root, false, false))
+  }
+}
+
+/* =====================================================================
+   9. BUILD THE WORLD
+   ===================================================================== */
+const ENT = { islands: new Map(), buildings: new Map(), lanterns: new Map(), routes: new Map() }
+const pickables = []
+const decorLanterns = []
+const islandGroups = []
+
+function placeBuilding(islandGroup, b, builder, x, y, z, ry = 0) {
+  const g = builder(b); g.position.set(x, y, z); g.rotation.y = ry; islandGroup.add(g)
+  const ent = { id: b.id, row: b, group: g, island: islandGroup, windows: [], slots: [], anchor: null }
+  g.traverse(o => { if (o.userData.anchor) ent.anchor = o; if (o.userData.slot) ent.slots.push(o); if (o.userData.slitView) ent.slitView = o; if (o.userData.balcony) ent.balcony = o })
+  ENT.buildings.set(b.id, ent)
+  return ent
+}
+
+function buildIsland(def, compose) {
+  const rnd = mulberry32(def.seed), g = new THREE.Group()
+  g.position.set(def.x, altY(def.altitude), def.z)
+  const rad = outline(def)
+  const body = mesh(islandBody(def, rad), MAT.rock, def.id === 1, true); g.add(body)
+  const grass = mesh(capShape(rad), MAT.grass, false, true); grass.position.y = .02; g.add(grass)
+  roots(g, def, rad, def.id === 1 ? 14 : 4 + Math.floor(def.r), rnd)
+  const ent = { id: def.id, row: def, group: g, baseY: g.position.y, phase: rnd() * 6, rad, anchor: marker(g, 'anchor', 0, def.id === 1 ? 14.5 : 4.5, 0), heart: marker(g, 'heart', def.id === 1 ? 0 : 0, def.id === 1 ? .35 : .3, def.id === 1 ? 7.2 : 0), hang: [] }
+  ENT.islands.set(def.id, ent)
+  compose(g, def, rnd, rad)
+  // proxy for picking the island itself (rock + cap)
+  const proxy = new THREE.Mesh(new THREE.CylinderGeometry(def.r * .95, def.r * .4, def.depth * .7, 12), new THREE.MeshBasicMaterial({ visible: false }))
+  proxy.position.y = -def.depth * .3; proxy.userData.pick = { table: 'islands', id: def.id }; g.add(proxy); pickables.push(proxy)
+  scene.add(g); islandGroups.push(ent)
+  return g
+}
+function stones(g, pts, rnd, size = .38) {
+  const geo = new THREE.CylinderGeometry(1, 1, .06, 9), inst = new THREE.InstancedMesh(geo, MAT.path, pts.length), m = new THREE.Matrix4(), q = new THREE.Quaternion()
+  pts.forEach(([x, z], i) => { const s = size * (.75 + rnd() * .5); m.compose(new THREE.Vector3(x, .045, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * 3), new THREE.Vector3(s, 1, s * (.8 + rnd() * .3))); inst.setMatrixAt(i, m) })
+  inst.receiveShadow = true; g.add(inst)
+}
+function bushes(g, pts, rnd) {
+  const inst = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), MAT.leaf, pts.length), m = new THREE.Matrix4(), q = new THREE.Quaternion()
+  pts.forEach(([x, y, z, s], i) => { m.compose(new THREE.Vector3(x, y + s * .55, z), q, new THREE.Vector3(s, s * .75, s)); inst.setMatrixAt(i, m) })
+  inst.castShadow = true; inst.receiveShadow = true; g.add(inst)
+}
+function tree(g, x, y, z, s, rnd) {
+  g.add(cyl(.06 * s, .1 * s, 1.2 * s, MAT.woodDark, x, y + .6 * s, z, 7))
+  for (let i = 0; i < 3; i++) { const c = mesh(new THREE.IcosahedronGeometry(.55 * s * (1 - i * .18), 1), MAT.leaf); c.position.set(x + (rnd() - .5) * .2, y + (1.2 + i * .45) * s, z + (rnd() - .5) * .2); g.add(c) }
+}
+function decorHang(g, x, y, z, len) {
+  const L = makeLanternMesh('hang'); L.group.position.set(x, y - len, z); g.add(L.group)
+  const chain = mesh(new THREE.CylinderGeometry(.008, .008, len, 4), MAT.iron, false, false); chain.position.set(x, y - len / 2, z); g.add(chain)
+  L.glass.emissiveIntensity = 2.2; decorLanterns.push(L)
+}
+
+/* ---- deck, stairs and string lights for the castle ---- */
+const stringBulbs = []
+function castleDeck(g, cx, cz, rIn, rOut, y, a0, a1) {
+  const plankGeo = new THREE.BoxGeometry(1, .07, .26), n = Math.ceil((a1 - a0) * rOut / .27)
+  const planks = new THREE.InstancedMesh(plankGeo, MAT.wood, n), m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0)
+  for (let i = 0; i < n; i++) { const a = a0 + (i + .5) / n * (a1 - a0), r = (rIn + rOut) / 2; m.compose(new THREE.Vector3(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r), q.setFromAxisAngle(up, -a), new THREE.Vector3(rOut - rIn, 1, 1)); planks.setMatrixAt(i, m) }
+  planks.castShadow = planks.receiveShadow = true; g.add(planks)
+  const posts = [], np = Math.ceil((a1 - a0) * rOut / 1.05)
+  for (let i = 0; i <= np; i++) { const a = a0 + i / np * (a1 - a0); posts.push(new THREE.Vector3(cx + Math.cos(a) * rOut, y, cz + Math.sin(a) * rOut)) }
+  const postMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(.045, .05, 1, 8), MAT.woodDark, posts.length * 2)
+  posts.forEach((p, i) => {
+    m.compose(new THREE.Vector3(p.x, y + .45, p.z), q.identity(), new THREE.Vector3(1, .95, 1)); postMesh.setMatrixAt(i * 2, m)
+    m.compose(new THREE.Vector3(p.x * .985 + cx * .015, y / 2, p.z * .985 + cz * .015), q.identity(), new THREE.Vector3(1.3, y, 1.3)); postMesh.setMatrixAt(i * 2 + 1, m)
+  })
+  postMesh.castShadow = true; g.add(postMesh)
+  const rail = new THREE.InstancedMesh(new THREE.BoxGeometry(1, .05, .07), MAT.wood, posts.length - 1)
+  for (let i = 0; i < posts.length - 1; i++) { const a = posts[i], b = posts[i + 1], mid = a.clone().add(b).multiplyScalar(.5); mid.y = y + .9; m.compose(mid, q.setFromAxisAngle(up, -Math.atan2(b.z - a.z, b.x - a.x)), new THREE.Vector3(a.distanceTo(b), 1, 1)); rail.setMatrixAt(i, m) }
+  rail.castShadow = true; g.add(rail)
+  // string lights: catenary between post tops
+  const bulbPos = [], wirePts = []
+  for (let i = 0; i < posts.length - 1; i++) {
+    const a = posts[i].clone().setY(y + 1.08), b = posts[i + 1].clone().setY(y + 1.08)
+    for (let s = 0; s <= 6; s++) { const t = s / 6, p = a.clone().lerp(b, t); p.y -= Math.sin(t * Math.PI) * .16; wirePts.push(p); if (s > 0 && s < 6 && s % 2 === 1) bulbPos.push(p.clone().add(new THREE.Vector3(0, -.05, 0))) }
+  }
+  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(wirePts), MAT.wire))
+  const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(.04, 8, 6), MAT.stringBulb, bulbPos.length)
+  bulbPos.forEach((p, i) => { m.compose(p, q.identity(), new THREE.Vector3(1, 1, 1)); bulbs.setMatrixAt(i, m) })
+  g.add(bulbs); stringBulbs.push(bulbs)
+  return posts
+}
+function stairs(g, from, to, width = .8) {
+  const steps = Math.ceil(Math.abs(to.y - from.y) / .19), dir = new THREE.Vector3().subVectors(to, from), ang = Math.atan2(dir.x, dir.z)
+  const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(width, .06, .3), MAT.wood, steps), m = new THREE.Matrix4(), q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ang)
+  for (let i = 0; i < steps; i++) { const p = from.clone().lerp(to, (i + .5) / steps); m.compose(p, q, new THREE.Vector3(1, 1, 1)); inst.setMatrixAt(i, m) }
+  inst.castShadow = inst.receiveShadow = true; g.add(inst)
+  const len = from.distanceTo(to), pitch = Math.asin((to.y - from.y) / len)
+  for (const s of [-1, 1]) {
+    const side = new THREE.Vector3(Math.cos(ang), 0, -Math.sin(ang)).multiplyScalar(s * width / 2)
+    const st = box(.06, .16, len, MAT.woodDark, 0, 0, 0); st.position.copy(from.clone().lerp(to, .5).add(side)).add(new THREE.Vector3(0, .02, 0)); st.rotation.set(-pitch, ang, 0, 'YXZ'); g.add(st)
+    const rl = box(.04, .04, len, MAT.wood, 0, 0, 0); rl.position.copy(st.position).add(new THREE.Vector3(0, .75, 0)); rl.rotation.copy(st.rotation); g.add(rl)
+  }
+}
+
+function composeCastle(g, def, rnd, rad) {
+  const TY = 1.4, cx = 0, cz = -1.2
+  const terrace = cyl(4.75, 5.0, TY, MAT.stone, cx, TY / 2, cz, 18); g.add(terrace)
+  g.add(cyl(4.85, 4.85, .14, MAT.stoneDark, cx, TY + .02, cz, 18))
+  const B = id => WORLD.buildings.find(b => b.id === id)
+  placeBuilding(g, B(1), keep, .3, TY, -1.7, .05)
+  placeBuilding(g, B(2), b => tower(b, { r: 1.05, h: 8.0, roofH: 2.9, rows: 3, perRow: 4, slit: true, base: 1.1, a0: .2 }), -2.35, TY, -1.9)
+  placeBuilding(g, B(3), b => tower(b, { r: .85, h: 6.0, roofH: 2.3, rows: 2, perRow: 3, base: .9, a0: .8 }), 2.95, TY, -3.3)
+  placeBuilding(g, B(4), b => tower(b, { r: .8, h: 7.0, roofH: 2.4, rows: 3, perRow: 3, base: .9, a0: -.5 }), -.9, TY, -4.6)
+  placeBuilding(g, B(5), b => hall(b, { balcony: true }), 2.25, TY, 1.25, -.28)
+  placeBuilding(g, B(6), stall, -4.9, 0, 4.7, .55)
+  placeBuilding(g, B(7), b => cottage(b, { w: 2.1, d: 1.7, h: 1.5 }), 5.6, 0, 4.0, -.6)
+  // wraparound deck on the terrace edge + stairs + string lights
+  castleDeck(g, cx, cz, 4.75, 5.95, TY, -.55, Math.PI + .7)
+  stairs(g, new THREE.Vector3(3.6, .1, 6.2), new THREE.Vector3(2.75, TY - .02, 4.35))
+  const bal = ENT.buildings.get(5).balcony; bal.updateWorldMatrix(true, false)
+  const balPos = g.worldToLocal(bal.getWorldPosition(new THREE.Vector3()))
+  stairs(g, new THREE.Vector3(balPos.x + 1.15, TY + .05, balPos.z + .95), new THREE.Vector3(balPos.x + .2, balPos.y, balPos.z + .2), .62)
+  // paths, bushes, a tree, hanging decorative lanterns under the rock
+  stones(g, [[3.9, 6.7], [3.4, 7.4], [2.7, 7.9], [1.8, 8.1], [.8, 8.2], [-.4, 7.9], [-1.6, 7.3], [-2.8, 6.6], [-3.8, 5.9], [4.6, 6.0], [5.2, 5.4]], rnd)
+  bushes(g, [[-6.2, 0, 2.6, .5], [-5.6, 0, 1.6, .38], [6.6, 0, 1.6, .45], [-1.5, 0, 8.4, .4], [6.9, 0, -1.4, .55], [-6.8, 0, -2.2, .5], [-3.3, 0, 7.4, .32], [1.6, 0, -7.2, .5]], rnd)
+  tree(g, -6.5, 0, -.6, 1.15, rnd); tree(g, 6.6, 0, -3.4, .9, rnd)
+  decorHang(g, 3.2, -3.4, 4.4, 1.6); decorHang(g, -4.4, -4.6, 1.2, 1.2); decorHang(g, .8, -5.6, -4.4, 1.9)
+}
+function composeEmber(g, def, rnd) {
+  placeBuilding(g, WORLD.buildings.find(b => b.id === 8), b => cottage(b, { w: 2.2, d: 1.8, h: 1.55 }), .2, 0, -.3, .5)
+  for (let i = 0; i < 9; i++) { const a = 1.9 + i * .22, p = cyl(.03, .03, .45, MAT.woodDark, Math.cos(a) * 2.5, .22, Math.sin(a) * 2.5, 6); g.add(p) }
+  g.add(box(.9, .07, .3, MAT.wood, -1.4, .38, 1.5)); tree(g, 1.9, 0, 1.2, .8, rnd)
+  stones(g, [[-.4, 1.4], [-.7, 2.1], [-.6, 2.8]], rnd, .3)
+}
+function composePorch(g, def, rnd) {
+  placeBuilding(g, WORLD.buildings.find(b => b.id === 9), b => house(b, { w: 2.3, d: 1.9, porch: true }), 0, 0, -.4, -.9)
+  bushes(g, [[1.6, 0, 1.3, .4], [-1.8, 0, .8, .35], [1.2, 0, -2.2, .45]], rnd)
+  decorHang(g, -1.2, -2.0, 1.8, 1.0)
+}
+function composeLanternRock(g, def, rnd) {
+  bushes(g, [[.6, 0, .4, .3]], rnd)
+  for (let i = 0; i < 3; i++) { const r = mesh(new THREE.DodecahedronGeometry(.3 + rnd() * .25, 0), MAT.stoneDark); r.position.set((rnd() - .5) * 1.6, .15, (rnd() - .5) * 1.6); r.rotation.set(rnd(), rnd(), rnd()); g.add(r) }
+  g.add(cyl(.05, .06, 1.6, MAT.woodDark, -.9, .8, -.3, 7))
+  const arm = box(.9, .06, .06, MAT.woodDark, -.5, 1.55, -.3); g.add(arm)
+  ENT.islands.get(4).hang.push(marker(g, 'hang', -.1, 1.25, -.3, { style: 'hang' }))
+}
+function composeFlagSpire(g, def, rnd) {
+  placeBuilding(g, WORLD.buildings.find(b => b.id === 10), b => tower(b, { r: .58, h: 3.0, roofH: 1.6, rows: 1, perRow: 3, base: .5, a0: .6 }), 0, 0, 0)
+  stones(g, [[1.1, .6], [1.3, -.4], [-.9, 1.0]], rnd, .28)
+}
+function composeMillbrook(g, def, rnd) {
+  const B = id => WORLD.buildings.find(b => b.id === id)
+  placeBuilding(g, B(11), b => house(b, { w: 2.4, d: 2.0 }), -1.6, 0, -1.3, .3)
+  placeBuilding(g, B(12), b => cottage(b, { w: 2.0, d: 1.7, h: 1.45 }), 1.9, 0, -1.7, -.4)
+  placeBuilding(g, B(13), b => cottage(b, { w: 1.9, d: 1.6, h: 1.4 }), -2.3, 0, 1.9, 1.2)
+  placeBuilding(g, B(14), barn, 2.1, 0, 1.7, -.9)
+  // timber deck reaching toward the castle
+  const dir = Math.atan2(-11, -25)
+  const deckG = new THREE.Group(); deckG.position.set(Math.cos(dir) * 4.6, .12, Math.sin(dir) * 4.6); deckG.rotation.y = -dir; g.add(deckG)
+  deckG.add(box(2.4, .1, 1.3, MAT.wood, .6, 0, 0))
+  for (let i = 0; i < 5; i++) for (const s of [-1, 1]) deckG.add(cyl(.03, .03, .6, MAT.woodDark, -.4 + i * .55, .3, s * .62, 6))
+  stones(g, [[0, 0], [-.6, .5], [.7, .3], [.3, -.6], [-1.0, -.1], [1.3, .1]], rnd, .34)
+  tree(g, -.2, 0, 3.4, .9, rnd); bushes(g, [[3.6, 0, -.4, .4], [-3.5, 0, -.6, .38]], rnd)
+}
+function composeThornwick(g, def, rnd, rad) {
+  const B = id => WORLD.buildings.find(b => b.id === id)
+  const step = mesh(islandBody({ ...def, r: 2.4, depth: .9, seed: def.seed + 5 }, outline({ r: 2.4, seed: def.seed + 5 }), { cap: .9 }), MAT.rock, true, true)
+  step.position.set(-.8, 0, -1.4); g.add(step)
+  const stepCap = mesh(capShape(outline({ r: 2.4, seed: def.seed + 5 })), MAT.grass, false, true); stepCap.position.set(-.8, .92, -1.4); g.add(stepCap)
+  placeBuilding(g, B(15), b => hall(b, { w: 3.0, d: 1.9, h: 2.2 }), -.8, .92, -1.5, .4)
+  placeBuilding(g, B(16), b => cottage(b, { w: 1.9, d: 1.6, h: 1.4 }), 2.1, 0, 1.3, -.7)
+  placeBuilding(g, B(17), b => cottage(b, { w: 1.5, d: 1.3, h: 1.2, chimney: false, flowers: false }), -2.6, 0, 2.0, .9)
+  stairs(g, new THREE.Vector3(.9, .05, .9), new THREE.Vector3(.2, .92, .1), .6)
+  const deckG = new THREE.Group(); deckG.position.set(4.3, .12, -.2); g.add(deckG)
+  deckG.add(box(2.0, .1, 1.1, MAT.wood, .5, 0, 0))
+  for (let i = 0; i < 4; i++) for (const s of [-1, 1]) deckG.add(cyl(.03, .03, .6, MAT.woodDark, -.3 + i * .55, .3, s * .52, 6))
+  tree(g, 3.0, 0, -2.4, .85, rnd); bushes(g, [[-3.4, 0, -.2, .42], [1.0, 0, 3.0, .36]], rnd)
+}
+const COMPOSE = { 1: composeCastle, 2: composeEmber, 3: composePorch, 4: composeLanternRock, 5: composeFlagSpire, 6: composeMillbrook, 7: composeThornwick }
+for (const def of WORLD.islands) buildIsland(def, COMPOSE[def.id])
+
+/* building pick proxies (cheap boxes, one per building) */
+for (const ent of ENT.buildings.values()) {
+  ent.group.updateWorldMatrix(true, true)
+  const bb = new THREE.Box3()
+  ent.group.traverse(o => { if (o.isMesh) { o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld)) } })
+  const inv = new THREE.Matrix4().copy(ent.island.matrixWorld).invert(); bb.applyMatrix4(inv)
+  const size = bb.getSize(new THREE.Vector3()), center = bb.getCenter(new THREE.Vector3())
+  const proxy = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), new THREE.MeshBasicMaterial({ visible: false }))
+  proxy.position.copy(center); proxy.userData.pick = { table: 'buildings', id: ent.id }
+  ent.island.add(proxy); pickables.push(proxy); ent.proxy = proxy
+}
+
+/* =====================================================================
+   10. WINDOWS — one instanced batch per island, colour driven by data
+   ===================================================================== */
+const WARM = new THREE.Color(1.0, 0.6, 0.3)
+const windowMat = new THREE.MeshBasicMaterial({ map: TEX.window, toneMapped: false })
+const winBatches = []
+for (const isl of ENT.islands.values()) {
+  const markers = []; isl.group.updateWorldMatrix(true, true)
+  isl.group.traverse(o => { if (o.userData.win) markers.push(o) })
+  if (!markers.length) continue
+  const inst = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), windowMat, markers.length)
+  const inv = new THREE.Matrix4().copy(isl.group.matrixWorld).invert(), m = new THREE.Matrix4(), s = new THREE.Matrix4()
+  const rnd = mulberry32(isl.id * 31), batch = { inst, isl, items: [] }
+  markers.forEach((o, i) => {
+    m.multiplyMatrices(inv, o.matrixWorld).multiply(s.makeScale(o.userData.win.w, o.userData.win.h, 1)); inst.setMatrixAt(i, m)
+    const ent = ENT.buildings.get(o.userData.win.b)
+    const item = { batch, index: i, b: o.userData.win.b, base: .55 + rnd() * .45, flick: rnd() < .12 ? .12 + rnd() * .1 : 0, phase: rnd() * 40, cur: 0, target: 1, local: o.position.clone(), marker: o }
+    ent.windows.push(item); batch.items.push(item)
+    inst.setColorAt(i, WARM)
+  })
+  inst.frustumCulled = false; isl.group.add(inst); winBatches.push(batch)
+}
+
+/* =====================================================================
+   11. CLOUDS · MOTES · LIGHT POOL
+   ===================================================================== */
+const clouds = []
+{
+  const rnd = mulberry32(5)
+  const add = (n, rMin, rMax, yMin, yMax, sMin, sMax, oMin, oMax, tint) => {
+    for (let i = 0; i < n; i++) {
+      const a = rnd() * Math.PI * 2, r = rMin + rnd() * (rMax - rMin), x = Math.cos(a) * r, z = Math.sin(a) * r, y = yMin + rnd() * (yMax - yMin)
+      if (WORLD.islands.some(d => Math.hypot(d.x - x, d.z - z) < d.r + 3 && Math.abs(altY(d.altitude) - y) < 3)) { i--; continue }
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.cloud, color: tint, transparent: true, opacity: oMin + rnd() * (oMax - oMin), depthWrite: false, fog: true }))
+      const s = sMin + rnd() * (sMax - sMin); sp.scale.set(s, s * .52, 1); sp.position.set(x, y, z); sp.material.rotation = (rnd() - .5) * .3
+      scene.add(sp); clouds.push({ sp, speed: .12 + rnd() * .2, base: sp.material.opacity })
+    }
+  }
+  add(40, 6, 70, -19, -10, 16, 32, .5, .78, new THREE.Color('#7d8db6'))
+  add(26, 13, 48, -5, 4, 7, 15, .22, .4, new THREE.Color('#99a6c9'))
+  add(16, 85, 150, -8, 14, 45, 80, .3, .5, new THREE.Color('#5d6d96'))
+}
+const motes = (() => {
+  const rnd = mulberry32(13), n = 130, pos = new Float32Array(n * 3)
+  for (let i = 0; i < n; i++) pos.set([(rnd() - .5) * 44, -4 + rnd() * 16, (rnd() - .5) * 44], i * 3)
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  const p = new THREE.Points(g, new THREE.PointsMaterial({ color: '#ffdcae', size: .05, transparent: true, opacity: .32, depthWrite: false, blending: THREE.AdditiveBlending }))
+  scene.add(p); return p
+})()
+const lightPool = Array.from({ length: 8 }, () => { const l = new THREE.PointLight('#ffad62', 0, 7, 2); scene.add(l); return { light: l, owner: null } })
+
+/* =====================================================================
+   12. LIVE WORLD STATE (mirrors the database; SQL sync writes into it)
+   ===================================================================== */
+const STATE = {
+  buildings: new Map(WORLD.buildings.map(b => [b.id, { ...b, deleted: false }])),
+  residentsByBuilding: new Map(),
+  hl: new Map(),          // building id -> 'on' | 'dim' | 'hover'
+  residentHl: new Set(),  // building:index of highlighted resident windows
+}
+function setResidents(rows) {
+  STATE.residentsByBuilding.clear()
+  for (const r of [...rows].sort((a, b) => a.id - b.id)) { const list = STATE.residentsByBuilding.get(r.building_id) ?? []; list.push(r.id); STATE.residentsByBuilding.set(r.building_id, list) }
+}
+setResidents(WORLD.residents)
+function windowTarget(item) {
+  const b = STATE.buildings.get(item.b), k = ENT.buildings.get(item.b).windows.indexOf(item)
+  if (!b || b.deleted) return .03
+  const lived = (STATE.residentsByBuilding.get(item.b) ?? []).length
+  let v = !b.occupied ? .05 : k < lived ? 1.12 + item.base * .35 : item.base < .62 ? .07 : .2 + item.base * .25
+  const hl = STATE.hl.get(item.b)
+  if (hl === 'on') v = Math.max(v, .45) * 2.25
+  else if (hl === 'dim') v *= .32
+  if (STATE.residentHl.has(`${item.b}:${k}`)) v = Math.max(v, .6) * 3.2
+  if (hover.building === item.b) v = Math.max(v, .3) * 1.5
+  return v
+}
+
+/* ---- lanterns are rows: created / updated / dissolved from data ---- */
+const slotUse = new Map()  // slot Object3D -> lantern id
+function slotFor(row) {
+  const ent = row.building_id != null ? ENT.buildings.get(row.building_id) : null
+  const isl = ent ? ent.island : row.island_id != null ? ENT.islands.get(row.island_id)?.group : null
+  if (!isl) return null
+  const slots = ent ? ent.slots : ENT.islands.get(row.island_id).hang
+  for (const s of slots) if (!slotUse.has(s) || slotUse.get(s) === row.id) { slotUse.set(s, row.id); return { island: isl, slot: s, style: s.userData.slot?.style ?? s.userData.hang?.style ?? 'wall' } }
+  // all architectural slots taken: stand a post lantern on the ground beside the building
+  const used = [...slotUse.values()].length
+  const base = ent ? ent.group.position : new THREE.Vector3()
+  const a = row.id * 2.39996, o = new THREE.Object3D(); o.position.set(base.x + Math.cos(a) * 1.9, (ent ? ent.group.position.y : 0) + 1.15, base.z + Math.sin(a) * 1.9); isl.add(o)
+  return { island: isl, slot: o, style: 'post', extra: used }
+}
+function lanternWorldPos(L, v = new THREE.Vector3()) { return L.group.getWorldPosition(v) }
+function createLantern(row, { animate = false } = {}) {
+  // a lantern with the same id may still be dissolving: drop it now so it is never orphaned
+  const old = ENT.lanterns.get(row.id)
+  if (old) { old.island.remove(old.group); if (old.light) { old.light.owner = null; old.light.light.intensity = 0 } ENT.lanterns.delete(row.id); const k = pickables.indexOf(old.proxy); if (k >= 0) pickables.splice(k, 1) }
+  const where = slotFor(row); if (!where) return null
+  const { group, glass, halo } = makeLanternMesh(where.style)
+  where.island.updateWorldMatrix(true, true)
+  const local = where.island.worldToLocal(where.slot.getWorldPosition(new THREE.Vector3()))
+  group.position.copy(local)
+  const q = new THREE.Quaternion(); where.slot.getWorldQuaternion(q); group.quaternion.copy(q).premultiply(where.island.getWorldQuaternion(new THREE.Quaternion()).invert())
+  where.island.add(group)
+  const L = { id: row.id, row: { ...row }, group, glass, halo, slot: where.slot, island: where.island, cur: animate ? 0 : 1, target: 1, spawn: animate ? 0 : 1, dying: false, phase: row.id * 1.7, light: null }
+  group.scale.setScalar(animate ? .001 : 1)
+  const proxy = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 6), new THREE.MeshBasicMaterial({ visible: false })); proxy.userData.pick = { table: 'lanterns', id: row.id }; group.add(proxy); pickables.push(proxy); L.proxy = proxy
+  ENT.lanterns.set(row.id, L)
+  if (animate) burst(lanternWorldPos(L), 'assemble')
+  return L
+}
+function removeLantern(id) {
+  const L = ENT.lanterns.get(id); if (!L || L.dying) return
+  L.dying = true; L.dieT = 0
+  slotUse.delete(L.slot)
+  const k = pickables.indexOf(L.proxy); if (k >= 0) pickables.splice(k, 1)
+}
+function lanternIntensity(L) { const r = L.row; return r.active ? Math.max(0, Math.min(1, Number(r.brightness) || 0)) : 0 }
+function assignLight(L, prefer = false) {
+  if (L.light) return
+  let slot = lightPool.find(p => !p.owner)
+  if (!slot && prefer) { slot = lightPool[6 + (assignLight.k = ((assignLight.k ?? 0) + 1) % 2)]; if (slot.owner) slot.owner.light = null }
+  if (slot) { slot.owner = L; L.light = slot }
+}
+for (const row of WORLD.lanterns) createLantern(row)
+for (const id of [3, 1, 2, 10, 6, 4]) assignLight(ENT.lanterns.get(id))
+
+/* ---- route paths (faint floating lantern dots between islands) ---- */
+function routeCurve(fromId, toId) {
+  const a = ENT.islands.get(fromId).group.position.clone().add(new THREE.Vector3(0, 1.2, 0))
+  const b = ENT.islands.get(toId).group.position.clone().add(new THREE.Vector3(0, 1.2, 0))
+  const dir = b.clone().sub(a).setY(0).normalize()
+  const ra = ENT.islands.get(fromId).row.r * .8, rb = ENT.islands.get(toId).row.r * .8
+  const p0 = a.clone().addScaledVector(dir, ra), p2 = b.clone().addScaledVector(dir, -rb), mid = p0.clone().lerp(p2, .5); mid.y = Math.max(p0.y, p2.y) + 1.6
+  return new THREE.QuadraticBezierCurve3(p0, mid, p2)
+}
+const routeDotMat = new THREE.PointsMaterial({ color: '#ffc27d', size: .12, transparent: true, opacity: .32, depthWrite: false, blending: THREE.AdditiveBlending })
+function createRoute(row) {
+  if (!ENT.islands.has(row.from_island_id) || !ENT.islands.has(row.to_island_id)) return
+  const curve = routeCurve(row.from_island_id, row.to_island_id), n = Math.max(6, Math.round(curve.getLength() / 1.1))
+  const pts = curve.getSpacedPoints(n), g = new THREE.BufferGeometry().setFromPoints(pts)
+  const dots = new THREE.Points(g, routeDotMat.clone()); scene.add(dots)
+  ENT.routes.set(row.id, { id: row.id, row: { ...row }, curve, dots, anchor: curve.getPoint(.5) })
+}
+for (const r of WORLD.routes) createRoute(r)
+
+/* =====================================================================
+   13. PARTICLE BURSTS (assemble / dissolve)
+   ===================================================================== */
+const bursts = []
+function burst(pos, kind) {
+  const n = 46, arr = new Float32Array(n * 3), vel = [], rnd = mulberry32(Math.floor(pos.x * 100 + pos.z * 7))
+  for (let i = 0; i < n; i++) {
+    const d = new THREE.Vector3(rnd() - .5, rnd() - .3, rnd() - .5).normalize().multiplyScalar(.5 + rnd() * .9)
+    const p = kind === 'assemble' ? pos.clone().add(d) : pos.clone()
+    arr.set([p.x, p.y, p.z], i * 3); vel.push(kind === 'assemble' ? d.clone().negate() : d.multiplyScalar(.7).add(new THREE.Vector3(0, .5, 0)))
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(arr, 3))
+  const p = new THREE.Points(g, new THREE.PointsMaterial({ color: '#ffc781', size: .07, transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending }))
+  scene.add(p); bursts.push({ p, vel, t: 0, dur: kind === 'assemble' ? 1.1 : 1.5, kind })
+}
+
+/* =====================================================================
+   14. LABELS PROJECTED FROM 3D
+   ===================================================================== */
+const LABELS = new Map(), labelLayer = $('labels')
+function label(key, html, get, cls = '') {
+  let L = LABELS.get(key)
+  if (!L) { const el = document.createElement('div'); labelLayer.appendChild(el); L = { el }; LABELS.set(key, L) }
+  L.el.className = 'tag ' + cls; L.el.innerHTML = html; L.get = get; return L
+}
+function clearLabels(prefix = '') { for (const [k, L] of LABELS) if (k.startsWith(prefix)) { L.el.remove(); LABELS.delete(k) } }
+const esc = s => String(s ?? 'NULL').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const _v = new THREE.Vector3()
+function updateLabels() {
+  for (const L of LABELS.values()) {
+    const p = L.get(_v); if (!p) { L.el.style.display = 'none'; continue }
+    p.project(camera)
+    if (p.z > 1 || Math.abs(p.x) > 1.15 || Math.abs(p.y) > 1.15) { L.el.style.display = 'none'; continue }
+    L.el.style.display = ''
+    L.el.style.transform = `translate(${(p.x * .5 + .5) * innerWidth}px, ${(-p.y * .5 + .5) * innerHeight}px) translate(-50%,-100%)`
+  }
+}
+const anchorOf = {
+  buildings: id => { const e = ENT.buildings.get(id); return e && (v => e.anchor.getWorldPosition(v)) },
+  islands: id => { const e = ENT.islands.get(id); return e && (v => e.anchor.getWorldPosition(v)) },
+  lanterns: id => { const e = ENT.lanterns.get(id); return e && (v => e.group.getWorldPosition(v).add(new THREE.Vector3(0, .35, 0))) },
+  residents: id => { const w = residentWindow(id); return w && (v => w.marker.getWorldPosition(v)) },
+  routes: id => { const e = ENT.routes.get(id); return e && (v => v.copy(e.anchor)) },
+}
+function residentWindow(rid) {
+  for (const [bid, list] of STATE.residentsByBuilding) { const k = list.indexOf(rid); if (k >= 0) { const ent = ENT.buildings.get(bid); return ent?.windows[Math.min(k, ent.windows.length - 1)] } }
+  return null
+}
+
+/* =====================================================================
+   15. CAMERA DIRECTOR — scripted, interruptible, never fights the user
+   ===================================================================== */
+camera.fov = 40; camera.updateProjectionMatrix()
+const HERO = { pos: new THREE.Vector3(22, 9, 36), target: new THREE.Vector3(0, 5.5, -1) }
+const cine = { kind: null, t: 0 }
+let lastInput = performance.now(), orbitOn = true, viewShift = 0
+const OPENING = [
+  [0, [22, 9, 36], [0, 5.5, -1]], [7, [-4, 8.5, 30], [0, 4, 0]], [13, [-9.5, 2.7, 11], [1, 2.4, 0]],
+  [18, [9, 3.6, 10], [18, 2.6, -7]], [23, [21, 6, 3], [17, 2.4, -7]], [30, [0, 52, 34], [0, 0, 0]], [38, [22, 9, 36], [0, 5.5, -1]],
+]
+const openP = new THREE.CatmullRomCurve3(OPENING.map(k => new THREE.Vector3(...k[1])), false, 'centripetal')
+const openT = new THREE.CatmullRomCurve3(OPENING.map(k => new THREE.Vector3(...k[2])), false, 'centripetal')
+function startOpening() { cine.kind = 'opening'; cine.t = 0; controls.autoRotate = false }
+function flyTo(pos, target, dur = 2.6) {
+  controls.autoRotate = false
+  if (INSTANT || dur === 0) { camera.position.copy(pos); controls.target.copy(target); cine.kind = null; return }
+  Object.assign(cine, { kind: 'tween', t: 0, dur, p0: camera.position.clone(), t0: controls.target.clone(), p1: pos.clone(), t1: target.clone() })
+}
+function frameAround(points, { elevation = .55, distance = 1.4, min = 9, azimuth = null } = {}) {
+  if (!points.length) return
+  const c = new THREE.Vector3(); points.forEach(p => c.add(p)); c.divideScalar(points.length)
+  let r = 0; points.forEach(p => r = Math.max(r, p.distanceTo(c)))
+  const d = Math.max(min, r * 2.2 * distance)
+  const az = azimuth ?? Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z)
+  const pos = c.clone().add(new THREE.Vector3(Math.sin(az) * Math.cos(elevation), Math.sin(elevation), Math.cos(az) * Math.cos(elevation)).multiplyScalar(d))
+  flyTo(pos, c)
+}
+function interrupt() { lastInput = performance.now(); if (cine.kind) cine.kind = null; controls.autoRotate = false }
+controls.addEventListener('start', interrupt)
+function updateCamera(dt) {
+  if (cine.kind === 'opening') {
+    cine.t += dt
+    const total = OPENING.at(-1)[0], tt = total * (1 - Math.cos(Math.PI * clamp01(cine.t / total))) / 2
+    let i = 0; while (i < OPENING.length - 2 && tt > OPENING[i + 1][0]) i++
+    const s = clamp01((tt - OPENING[i][0]) / (OPENING[i + 1][0] - OPENING[i][0])), u = (i + s) / (OPENING.length - 1)
+    camera.position.copy(openP.getPoint(u)); controls.target.copy(openT.getPoint(u))
+    if (cine.t >= total) { cine.kind = null; lastInput = performance.now() }
+  } else if (cine.kind === 'tween') {
+    cine.t += dt; const k = ease(clamp01(cine.t / cine.dur))
+    camera.position.lerpVectors(cine.p0, cine.p1, k); controls.target.lerpVectors(cine.t0, cine.t1, k)
+    if (cine.t >= cine.dur) cine.kind = null
+  } else if (orbitOn && !labMode && performance.now() - lastInput > 9000) controls.autoRotate = true
+  // keep the castle clear of the editorial column on wide screens
+  const want = innerWidth > 860 && !labMode ? -innerWidth * .13 : 0
+  viewShift += (want - viewShift) * Math.min(1, dt * 2.5)
+  camera.setViewOffset(innerWidth, innerHeight, viewShift, 0, innerWidth, innerHeight)
+}
+$('zoomIn').onclick = () => { interrupt(); flyTo(camera.position.clone().lerp(controls.target, .3), controls.target.clone(), .9) }
+$('zoomOut').onclick = () => { interrupt(); flyTo(controls.target.clone().add(camera.position.clone().sub(controls.target).multiplyScalar(1.35)), controls.target.clone(), .9) }
+$('resetCam').onclick = () => { interrupt(); if (labMode) { exitLab(); return } flyTo(HERO.pos, HERO.target, 2.4) }
+$('orbitBtn').onclick = e => { orbitOn = !orbitOn; e.currentTarget.setAttribute('aria-pressed', orbitOn); if (!orbitOn) controls.autoRotate = false; else lastInput = 0 }
+
+/* =====================================================================
+   16. HOVER · PICK
+   ===================================================================== */
+const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2()
+const hover = { building: null, key: null }
+let labMode = false, downAt = null
+const UPDATERS = []   // per-frame hooks added by the SQL layer
+function pickAt(ev) {
+  pointer.set(ev.clientX / innerWidth * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1)
+  raycaster.setFromCamera(pointer, camera)
+  const hits = raycaster.intersectObjects(pickables, false)
+  return hits[0]?.object.userData.pick ?? null
+}
+
+/* =====================================================================
+   17. FRAME LOOP
+   ===================================================================== */
+const clock = new THREE.Clock()
+let time = 0, fpsAcc = 0, fpsN = 0, fpsT = 0
+const tmpC = new THREE.Color()
+function frame() {
+  const dt = Math.min(clock.getDelta(), .05); time += dt
+  updateCamera(dt)
+  for (const isl of islandGroups) isl.group.position.y = isl.baseY + Math.sin(time * .32 + isl.phase) * (isl.id === 1 ? .04 : .08)
+  for (const c of clouds) { c.sp.position.x += c.speed * dt * .6; if (c.sp.position.x > 150) c.sp.position.x = -150 }
+  for (const f of flags) {
+    const pos = f.geo.attributes.position
+    for (let i = 0; i < pos.count; i++) { const x = f.base[i * 3]; pos.setZ(i, Math.sin(x * 7 - time * 3.2 + f.phase) * .06 * (x / f.w)) }
+    pos.needsUpdate = true
+  }
+  for (const b of winBatches) {
+    for (const it of b.items) {
+      let target = windowTarget(it)
+      if (it.flick) target *= 1 - it.flick * (.5 + .5 * Math.sin(time * 6.3 + it.phase)) * (noise3(time * 1.7, it.phase, 0, 3) > .55 ? 1 : .2)
+      it.cur += (target - it.cur) * Math.min(1, dt * 3.2)
+      b.inst.setColorAt(it.index, tmpC.copy(WARM).multiplyScalar(it.cur))
+    }
+    b.inst.instanceColor.needsUpdate = true
+  }
+  for (const L of [...ENT.lanterns.values()]) {
+    const want = lanternIntensity(L), fl = 1 + .05 * Math.sin(time * 8.3 + L.phase) + .035 * Math.sin(time * 13.1 + L.phase * 2)
+    if (L.dying) {
+      L.dieT += dt; const k = L.dieT
+      L.cur = k < .7 ? want * (Math.sin(k * 40) > 0 ? 1 : .15) : want * Math.max(0, 1 - (k - .7) / .5)
+      if (k > .7 && !L.burstDone) { L.burstDone = true; burst(lanternWorldPos(L), 'dissolve') }
+      L.group.scale.setScalar(Math.max(.001, 1 - Math.max(0, k - .8) / .5))
+      if (k > 1.4) { L.island.remove(L.group); if (L.light) { L.light.owner = null; L.light.light.intensity = 0 } ENT.lanterns.delete(L.id); continue }
+    } else {
+      L.cur += (want - L.cur) * Math.min(1, dt * (L.spawn < 1 ? 1.2 : 2))
+      if (L.spawn < 1) { L.spawn = Math.min(1, L.spawn + dt / 1.1); L.group.scale.setScalar(Math.max(.001, ease(L.spawn))) }
+    }
+    const v = L.cur * fl * (1 + (L.boost ?? 0) * .9) * (L.dim ? .35 : 1)
+    L.glass.emissiveIntensity = .05 + v * 3.4
+    L.halo.material.opacity = v * .55; L.halo.scale.setScalar(.6 + v * .8)
+    if (L.light) { L.group.getWorldPosition(L.light.light.position); L.light.light.intensity = v * 5.5 }
+  }
+  for (const D of decorLanterns) D.glass.emissiveIntensity = 2 + .25 * Math.sin(time * 7 + D.group.position.x)
+  motes.position.y = Math.sin(time * .2) * .4; motes.rotation.y = time * .01
+  for (let i = bursts.length - 1; i >= 0; i--) {
+    const B = bursts[i]; B.t += dt; const pos = B.p.geometry.attributes.position
+    for (let j = 0; j < pos.count; j++) pos.setXYZ(j, pos.getX(j) + B.vel[j].x * dt, pos.getY(j) + B.vel[j].y * dt, pos.getZ(j) + B.vel[j].z * dt)
+    pos.needsUpdate = true; B.p.material.opacity = 1 - B.t / B.dur
+    if (B.t >= B.dur) { scene.remove(B.p); B.p.geometry.dispose(); bursts.splice(i, 1) }
+  }
+  for (const u of UPDATERS) u(dt, time)
+  sky.position.copy(camera.position)
+  controls.update()
+  composer.render()
+  updateLabels()
+  // adaptive quality
+  fpsAcc += dt; fpsN++; fpsT += dt
+  if (fpsT > 3) {
+    const fps = fpsN / fpsAcc; fpsAcc = fpsN = fpsT = 0
+    if (fps < 38 && pixelRatio > 1) { pixelRatio = Math.max(1, pixelRatio - .5); renderer.setPixelRatio(pixelRatio); composer.setPixelRatio(pixelRatio) }
+    else if (fps > 58 && pixelRatio < Math.min(devicePixelRatio, 2)) { pixelRatio = Math.min(Math.min(devicePixelRatio, 2), pixelRatio + .25); renderer.setPixelRatio(pixelRatio); composer.setPixelRatio(pixelRatio) }
+  }
+  requestAnimationFrame(frame)
+}
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix()
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); bloom.setSize(innerWidth, innerHeight)
+})
+
+/* =====================================================================
+   18. SQL ENGINE — real SQLite (sql.js / WASM) inside a worker
+   ===================================================================== */
+const SQLJS = 'https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/'
+const lit = v => v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`
+const SEED_SQL = [
+  'PRAGMA foreign_keys = ON;',
+  'CREATE TABLE islands (id INTEGER PRIMARY KEY, name TEXT NOT NULL, altitude INTEGER NOT NULL, district TEXT NOT NULL);',
+  'CREATE TABLE buildings (id INTEGER PRIMARY KEY, island_id INTEGER NOT NULL REFERENCES islands(id) ON DELETE CASCADE, name TEXT NOT NULL, type TEXT NOT NULL, roof_color TEXT NOT NULL, occupied INTEGER NOT NULL DEFAULT 1);',
+  'CREATE TABLE residents (id INTEGER PRIMARY KEY, building_id INTEGER NOT NULL REFERENCES buildings(id) ON DELETE CASCADE, name TEXT NOT NULL, occupation TEXT NOT NULL, age INTEGER NOT NULL);',
+  'CREATE TABLE lanterns (id INTEGER PRIMARY KEY, building_id INTEGER REFERENCES buildings(id) ON DELETE CASCADE, island_id INTEGER REFERENCES islands(id) ON DELETE CASCADE, brightness REAL NOT NULL DEFAULT 0.7 CHECK (brightness BETWEEN 0 AND 1), active INTEGER NOT NULL DEFAULT 1);',
+  'CREATE TABLE routes (id INTEGER PRIMARY KEY, from_island_id INTEGER NOT NULL REFERENCES islands(id) ON DELETE CASCADE, to_island_id INTEGER NOT NULL REFERENCES islands(id) ON DELETE CASCADE, route_type TEXT NOT NULL);',
+  ...WORLD.islands.map(i => `INSERT INTO islands VALUES (${i.id}, ${lit(i.name)}, ${i.altitude}, ${lit(i.district)});`),
+  ...WORLD.buildings.map(b => `INSERT INTO buildings VALUES (${b.id}, ${b.island_id}, ${lit(b.name)}, ${lit(b.type)}, ${lit(b.roof_color)}, ${b.occupied});`),
+  ...WORLD.residents.map(r => `INSERT INTO residents VALUES (${r.id}, ${r.building_id}, ${lit(r.name)}, ${lit(r.occupation)}, ${r.age});`),
+  ...WORLD.lanterns.map(l => `INSERT INTO lanterns VALUES (${l.id}, ${lit(l.building_id)}, ${lit(l.island_id)}, ${l.brightness}, ${l.active});`),
+  ...WORLD.routes.map(r => `INSERT INTO routes VALUES (${r.id}, ${r.from_island_id}, ${r.to_island_id}, ${lit(r.route_type)});`),
+].join('\n')
+const LAB_SEED = `CREATE TABLE accounts (id INTEGER PRIMARY KEY, username TEXT NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL);
+INSERT INTO accounts VALUES (1, 'warden', 'moonlight-42', 'keeper'), (2, 'scribe', 'inkwell-7', 'archivist'), (3, 'lamplighter', 'ember-19', 'staff');`
+const WORKER_SRC = `
+importScripts('${SQLJS}sql-wasm.js');
+var db = null, lab = null;
+var ready = initSqlJs({ locateFile: function (f) { return '${SQLJS}' + f } });
+var TABLES = ['islands', 'buildings', 'residents', 'lanterns', 'routes'];
+function rows(d, sql, params) { var st = d.prepare(sql); try { if (params) st.bind(params); var cols = st.getColumnNames(), out = []; while (st.step()) out.push(st.get()); return { columns: cols, rows: out } } finally { st.free() } }
+function objects(d, sql) { var r = rows(d, sql); return r.rows.map(function (v) { var o = {}; r.columns.forEach(function (c, i) { o[c] = v[i] }); return o }) }
+function snapshot() { var s = {}; TABLES.forEach(function (t) { try { s[t] = objects(db, 'SELECT * FROM ' + t + ' ORDER BY id') } catch (e) { s[t] = [] } }); return s }
+function runAll(d, sql, cap) {
+  var out = [];
+  try {
+    for (var st of d.iterateStatements(sql)) {
+      var cols = st.getColumnNames();
+      if (cols.length) { var r = [], trunc = false; while (st.step()) { if (r.length >= cap) { trunc = true; break } r.push(st.get()) } out.push({ sql: st.getSQL(), columns: cols, rows: r, truncated: trunc }) }
+      else { st.step(); out.push({ sql: st.getSQL(), columns: [], rows: [], changes: d.getRowsModified() }) }
+    }
+    return { ok: true, results: out }
+  } catch (e) { return { ok: false, results: out, error: String(e && e.message || e) } }
+}
+async function handle(m) {
+  var SQL = await ready;
+  if (m.type === 'init' || m.type === 'reset') { if (db) db.close(); db = new SQL.Database(); db.run(m.seed); if (!lab) { lab = new SQL.Database(); lab.run(m.labSeed) } return { snapshot: snapshot() } }
+  if (m.type === 'run') {
+    var t0 = performance.now(), res = runAll(db, m.sql, 400), ms = performance.now() - t0;
+    var comp = (m.companions || []).map(function (c) { try { var r = rows(db, c); r.ok = true; return r } catch (e) { return { ok: false, error: String(e && e.message || e) } } });
+    return { res: res, ms: ms, comp: comp, snapshot: snapshot() }
+  }
+  if (m.type === 'query') { try { var r = rows(db, m.sql, m.params); r.ok = true; return r } catch (e) { return { ok: false, error: String(e && e.message || e) } } }
+  if (m.type === 'labReset') { if (lab) lab.close(); lab = new SQL.Database(); lab.run(m.labSeed); return {} }
+  if (m.type === 'lab') {
+    if (m.protected) {
+      var psql = 'SELECT id, username, role FROM accounts WHERE username = ? AND password = ?';
+      try { var pr = rows(lab, psql, [m.user, m.pass]); return { sql: psql, ok: true, columns: pr.columns, rows: pr.rows } } catch (e) { return { sql: psql, ok: false, error: String(e && e.message || e), rows: [] } }
+    }
+    var vsql = "SELECT id, username, role FROM accounts WHERE username = '" + m.user + "' AND password = '" + m.pass + "'";
+    var vr = runAll(lab, vsql, 50), first = vr.results.find(function (x) { return x.columns.length });
+    return { sql: vsql, ok: vr.ok, error: vr.error, columns: first ? first.columns : [], rows: first ? first.rows : [], statements: vr.results.length }
+  }
+}
+self.onmessage = async function (e) { var m = e.data, out; try { out = await handle(m) } catch (err) { out = { fatal: String(err && err.message || err) } } out.id = m.id; self.postMessage(out) };
+`
+class Engine {
+  constructor() { this.seq = 0; this.pending = new Map(); this.spawn() }
+  spawn() {
+    this.w = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })))
+    this.w.onmessage = e => { const p = this.pending.get(e.data.id); if (!p) return; clearTimeout(p.timer); this.pending.delete(e.data.id); e.data.fatal ? p.reject(new Error(e.data.fatal)) : p.resolve(e.data) }
+    this.w.onerror = e => { for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('SQLite worker failed to load: ' + (e.message || 'network'))) } this.pending.clear() }
+  }
+  call(msg, timeout = 5000) {
+    const id = ++this.seq
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.w.terminate(); for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('timeout')) }
+        this.pending.clear(); this.spawn(); this.onRestart?.()
+      }, timeout)
+      this.pending.set(id, { resolve, reject, timer }); this.w.postMessage({ ...msg, id })
+    })
+  }
+}
+const engine = new Engine()
+let SNAP = null, sqlReady = false
+
+/* =====================================================================
+   19. WORLD ⇄ DATABASE SYNC — the scene always mirrors the real tables
+   ===================================================================== */
+const ISLAND_ROWS = new Map(WORLD.islands.map(i => [i.id, { ...i, deleted: false }]))
+const blueprints = new Map()
+const roofTweens = []
+function tweenRoof(id, color, animate) {
+  const m = roofMats.get(id); if (!m) return
+  const to = new THREE.Color(ROOF_HEX[color] ?? '#8a7a6a')
+  if (!animate) { m.color.copy(to); return }
+  roofTweens.push({ m, from: m.color.clone(), to, t: 0 })
+}
+UPDATERS.push(dt => { for (let i = roofTweens.length - 1; i >= 0; i--) { const r = roofTweens[i]; r.t = Math.min(1, r.t + dt / 1.4); r.m.color.lerpColors(r.from, r.to, ease(r.t)); if (r.t >= 1) roofTweens.splice(i, 1) } })
+function blueprint(row) {
+  const isl = ENT.islands.get(row.island_id); if (!isl) return
+  const a = row.id * 2.39996, r = isl.row.r * .5
+  const g = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.5, 1.3, 1.5)), new THREE.LineBasicMaterial({ color: '#ffd393', transparent: true, opacity: .75 }))
+  g.position.set(Math.cos(a) * r, .7, Math.sin(a) * r); isl.group.add(g)
+  const roof = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.ConeGeometry(1.15, .9, 4)), g.material); roof.position.y = 1.1; roof.rotation.y = Math.PI / 4; g.add(roof)
+  blueprints.set(row.id, g)
+  label(`ghost:b:${row.id}`, `NEW ROW #${row.id} · ${esc(row.name)}<small>blueprint — inserted row, not yet built</small>`, v => g.getWorldPosition(v).add(new THREE.Vector3(0, 2.1, 0)), 'delta')
+}
+function refreshGhosts() {
+  clearLabels('ghost:')
+  for (const [id, st] of STATE.buildings) {
+    if (st.deleted && ENT.buildings.has(id)) label(`ghost:b:${id}`, `#${id} ${esc(st.name)} · ROW DELETED<small>simulation overlay — architecture kept</small>`, anchorOf.buildings(id), 'ghost')
+  }
+  for (const [id, row] of blueprints) { const st = STATE.buildings.get(id); if (st) label(`ghost:b:${id}`, `NEW ROW #${id} · ${esc(st.name)}<small>blueprint — inserted row, not yet built</small>`, v => row.getWorldPosition(v).add(new THREE.Vector3(0, 2.1, 0)), 'delta') }
+  for (const [id, st] of ISLAND_ROWS) {
+    if (st.deleted) label(`ghost:i:${id}`, `ISLAND #${id} ${esc(st.name)} · ROW DELETED<small>simulation overlay</small>`, anchorOf.islands(id), 'ghost')
+    else if (st.virtual) label(`ghost:i:${id}`, `NEW ISLAND ROW #${id} · ${esc(st.name)}<small>altitude ${st.altitude} m — not yet raised</small>`, v => v.set(0, 18 + id * .5, 0), 'delta')
+  }
+}
+function applySnapshot(next, { animate = true } = {}) {
+  const ch = { lanternsAdded: [], lanternsRemoved: [], lanternsChanged: [], buildingFields: [], buildingsDeleted: [], buildingsAdded: [], residents: [], islands: [], routes: [] }
+  SNAP = next
+  // islands
+  const ni = new Map(next.islands.map(i => [i.id, i]))
+  for (const [id, st] of ISLAND_ROWS) {
+    const row = ni.get(id)
+    if (!row) { if (st.virtual) ISLAND_ROWS.delete(id); else if (!st.deleted) { st.deleted = true; ch.islands.push({ id, what: 'deleted' }) } continue }
+    if (st.deleted) st.deleted = false
+    for (const f of ['name', 'altitude', 'district']) if (row[f] !== st[f]) ch.islands.push({ id, what: f, from: st[f], to: row[f] })
+    Object.assign(st, row)
+  }
+  for (const row of next.islands) if (!ISLAND_ROWS.has(row.id)) { ISLAND_ROWS.set(row.id, { ...row, virtual: true }); ch.islands.push({ id: row.id, what: 'inserted' }) }
+  // buildings
+  const nb = new Map(next.buildings.map(b => [b.id, b]))
+  for (const [id, st] of [...STATE.buildings]) {
+    const row = nb.get(id)
+    if (!row) {
+      if (st.virtual) { STATE.buildings.delete(id); const bp = blueprints.get(id); if (bp) { bp.parent.remove(bp); blueprints.delete(id) } }
+      else if (!st.deleted) { st.deleted = true; ch.buildingsDeleted.push(id) }
+      continue
+    }
+    if (st.deleted) st.deleted = false
+    for (const f of ['name', 'type', 'roof_color', 'occupied', 'island_id']) if (row[f] !== st[f]) {
+      ch.buildingFields.push({ id, field: f, from: st[f], to: row[f] })
+      if (f === 'roof_color') tweenRoof(id, row[f], animate)
+    }
+    Object.assign(st, row)
+  }
+  for (const row of next.buildings) if (!STATE.buildings.has(row.id)) { STATE.buildings.set(row.id, { ...row, virtual: true, deleted: false }); blueprint(row); ch.buildingsAdded.push(row.id) }
+  // residents -> lit windows
+  const before = new Map([...STATE.residentsByBuilding].map(([k, v]) => [k, v.length]))
+  setResidents(next.residents)
+  for (const id of new Set([...before.keys(), ...STATE.residentsByBuilding.keys()])) {
+    const a = before.get(id) ?? 0, b = STATE.residentsByBuilding.get(id)?.length ?? 0
+    if (a !== b) ch.residents.push({ id, from: a, to: b })
+  }
+  // lanterns
+  const nl = new Map(next.lanterns.map(l => [l.id, l]))
+  for (const [id, L] of [...ENT.lanterns]) if (!L.dying && !nl.has(id)) { removeLantern(id); ch.lanternsRemoved.push(id) }
+  for (const row of next.lanterns) {
+    const L = ENT.lanterns.get(row.id)
+    if (!L || L.dying) { const n = createLantern(row, { animate }); if (n) { ch.lanternsAdded.push(row.id); if (animate) assignLight(n, true) } continue }
+    const moved = L.row.building_id !== row.building_id || L.row.island_id !== row.island_id
+    if (moved || L.row.brightness !== row.brightness || L.row.active !== row.active) {
+      ch.lanternsChanged.push({ id: row.id, from: { ...L.row }, to: { ...row } })
+      if (moved) { removeLantern(row.id); const n = createLantern(row, { animate }); if (n && animate) assignLight(n, true) }
+      else { L.row = { ...row }; if (animate) assignLight(L, true) }
+    }
+  }
+  // routes
+  const nr = new Map(next.routes.map(r => [r.id, r]))
+  for (const [id, R] of [...ENT.routes]) {
+    const row = nr.get(id)
+    if (!row || row.from_island_id !== R.row.from_island_id || row.to_island_id !== R.row.to_island_id) { scene.remove(R.dots); ENT.routes.delete(id); ch.routes.push({ id, what: row ? 'moved' : 'deleted' }) }
+    else R.row = { ...row }
+  }
+  for (const row of next.routes) if (!ENT.routes.has(row.id)) { createRoute(row); ch.routes.push({ id: row.id, what: 'added' }) }
+  refreshGhosts()
+  return ch
+}
+
+/* =====================================================================
+   20. QUERY PLANNER — narrow, honest mappings from SQL shape to the world
+   Each plan carries a companion query (same FROM / WHERE) that returns the
+   ids of the rows involved, so animations never guess.
+   ===================================================================== */
+const MAPPED = ['islands', 'buildings', 'residents', 'lanterns', 'routes']
+const NOUN = { islands: 'ISLANDS', buildings: 'BUILDINGS', residents: 'RESIDENTS', lanterns: 'LANTERNS', routes: 'ROUTES' }
+const AGG = /\b(count|sum|avg|min|max|total|group_concat)\s*\(/i
+function cleanSQL(sql) { return sql.replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\s+/g, ' ').trim().replace(/;\s*$/, '') }
+function planQuery(sql) {
+  const s = cleanSQL(sql); let m
+  if (!s) return { kind: 'empty' }
+  if (s.replace(/'(?:[^']|'')*'/g, '').includes(';')) return { kind: 'multi' }
+  if ((m = s.match(/^(insert(?:\s+or\s+\w+)?\s+into|update|delete\s+from)\s+(\w+)/i))) return { kind: 'mutation', verb: m[1].split(' ')[0].toLowerCase(), table: m[2].toLowerCase() }
+  if (!/^select\b/i.test(s)) return { kind: 'other' }
+  const J = /^select\s+(.+?)\s+from\s+(\w+)(?:\s+(?:as\s+)?(?!(?:inner|left|join|where|on|cross)\b)(\w+))?\s+((?:inner\s+|left\s+(?:outer\s+)?)?join)\s+(\w+)(?:\s+(?:as\s+)?(?!(?:on|where)\b)(\w+))?\s+on\s+([\w.]+)\s*=\s*([\w.]+)\s*(where\s+.+?)?\s*(order\s+by\s+.+?)?\s*(limit\s+\d+(?:\s+offset\s+\d+)?)?$/i
+  if ((m = s.match(J))) {
+    const [, list, ta, aa, jt, tb, ab, k1, k2, where = '', , ] = m
+    const A = ta.toLowerCase(), B = tb.toLowerCase()
+    if (!MAPPED.includes(A) || !MAPPED.includes(B) || AGG.test(list) || /\bgroup\s+by\b/i.test(s)) return { kind: 'unsupported', why: 'JOIN with aggregates' }
+    const ra = aa || ta, rb = ab || tb
+    return { kind: 'join', A, B, ra, rb, k1, k2, left: /left/i.test(jt), companion: `SELECT ${ra}.id, ${rb}.id FROM ${ta}${aa ? ' ' + aa : ''} ${jt} ${tb}${ab ? ' ' + ab : ''} ON ${k1} = ${k2} ${where}` }
+  }
+  const G = /^select\s+([\w.]+)\s*,\s*count\(\s*(?:\*|[\w.]+)\s*\)(?:\s+as\s+\w+)?\s+from\s+(\w+)(?:\s+(?:as\s+)?(?!(?:where|group)\b)(\w+))?\s*(where\s+.+?)?\s*group\s+by\s+([\w.]+)\s*(having\s+.+?)?\s*(order\s+by\s+.+?)?$/i
+  if ((m = s.match(G))) {
+    const [, col, t, alias, where = '', gcol] = m, T = t.toLowerCase()
+    if (MAPPED.includes(T) && col.split('.').pop().toLowerCase() === gcol.split('.').pop().toLowerCase()) {
+      const ref = alias || t
+      return { kind: 'group', table: T, col, companion: `SELECT ${ref}.id, ${col} FROM ${t}${alias ? ' ' + alias : ''} ${where}` }
+    }
+  }
+  const S = /^select\s+(distinct\s+)?(.+?)\s+from\s+(\w+)(?:\s+(?:as\s+)?(?!(?:where|order|limit|group)\b)(\w+))?\s*(where\s+.+?)?\s*(order\s+by\s+(.+?))?\s*(limit\s+\d+(?:\s*(?:offset|,)\s*\d+)?)?$/i
+  if ((m = s.match(S))) {
+    const [, distinct, list, t, alias, where = '', order = '', orderExpr = '', limit = ''] = m, T = t.toLowerCase()
+    if (!MAPPED.includes(T)) return { kind: 'unsupported', why: `table "${t}" has no 3D counterpart` }
+    if (distinct || AGG.test(list) || /\bgroup\s+by\b/i.test(s)) return { kind: 'unsupported', why: 'aggregated / DISTINCT rows no longer map to single objects' }
+    const ref = alias || t, kind = order ? 'order' : where ? 'where' : 'select'
+    const firstOrder = orderExpr.split(',')[0].replace(/\s+(asc|desc)\s*$/i, '').trim()
+    const extra = list.trim() === '*' ? `, ${ref}.*` : `, ${list}`
+    return { kind, table: T, list, where, orderExpr: firstOrder, companion: `SELECT ${ref}.id AS __id${order ? `, ${firstOrder} AS __ord` : ''}${extra} FROM ${t}${alias ? ' ' + alias : ''} ${where} ${order} ${limit}` }
+  }
+  return { kind: 'unsupported', why: 'this query shape has no spatial mapping yet' }
+}
+
+/* =====================================================================
+   21. VISUAL RESPONSES
+   ===================================================================== */
+const VIZ = { objs: [], trails: [], hoverables: [], follow: null, beacons: [], hearts: new Set() }
+const ENT_FIELD = { buildings: 'name', islands: 'name', residents: 'name', lanterns: 'id', routes: 'route_type' }
+function hud(text) { const h = $('hud'); h.textContent = text; h.classList.toggle('on', !!text) }
+function clearViz() {
+  STATE.hl.clear(); STATE.residentHl.clear(); clearLabels('viz:'); hud('')
+  for (const o of VIZ.objs) { o.parent?.remove(o); o.geometry?.dispose?.(); o.material?.dispose?.() }
+  VIZ.objs = []; VIZ.trails = []; VIZ.hoverables = []; VIZ.follow = null; VIZ.beacons = []; VIZ.hearts.clear()
+  for (const L of ENT.lanterns.values()) { L.boost = 0; L.dim = false }
+  for (const R of ENT.routes.values()) { R.dots.material.opacity = .32; R.dots.material.size = .12 }
+}
+function entityPoints(table, ids) { return ids.map(id => anchorOf[table]?.(id)?.(new THREE.Vector3())).filter(Boolean) }
+function allIds(table) {
+  if (table === 'buildings') return [...STATE.buildings.keys()].filter(id => ENT.buildings.has(id) && !STATE.buildings.get(id).deleted)
+  if (table === 'islands') return [...ENT.islands.keys()]
+  if (table === 'lanterns') return [...ENT.lanterns.keys()]
+  if (table === 'routes') return [...ENT.routes.keys()]
+  if (table === 'residents') return [...STATE.residentsByBuilding.values()].flat()
+  return []
+}
+function illuminate(table, ids, { dimOthers = false } = {}) {
+  const set = new Set(ids)
+  if (table === 'buildings') { for (const id of allIds('buildings')) STATE.hl.set(id, set.has(id) ? 'on' : dimOthers ? 'dim' : undefined); for (const [k, v] of STATE.hl) if (!v) STATE.hl.delete(k) }
+  if (table === 'residents') for (const rid of ids) { for (const [bid, list] of STATE.residentsByBuilding) { const k = list.indexOf(rid); if (k >= 0) STATE.residentHl.add(`${bid}:${Math.min(k, ENT.buildings.get(bid).windows.length - 1)}`) } }
+  if (table === 'lanterns') for (const L of ENT.lanterns.values()) { L.boost = set.has(L.id) ? 1 : 0; L.dim = dimOthers && !set.has(L.id) }
+  if (table === 'routes') for (const R of ENT.routes.values()) { const on = set.has(R.id); R.dots.material.opacity = on ? .95 : dimOthers ? .12 : .32; R.dots.material.size = on ? .2 : .12 }
+  if (table === 'islands') for (const id of ids) beacon(id)
+}
+const beaconMat = () => new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.15, .7), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
+function beacon(islandId, height = 5) {
+  const isl = ENT.islands.get(islandId); if (!isl) return
+  const top = isl.id === 1 ? 17 : 5.5
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(.04, .04, height, 6, 1, true), beaconMat()); m.position.y = top + height / 2; isl.group.add(m)
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(.45, .03, 6, 40), beaconMat()); ring.rotation.x = Math.PI / 2; ring.position.y = top; isl.group.add(ring)
+  VIZ.objs.push(m, ring); VIZ.beacons.push({ m, ring, t: 0 })
+}
+UPDATERS.push(dt => {
+  for (const b of VIZ.beacons) { b.t += dt; const k = Math.min(1, b.t / 1.2); b.m.material.opacity = .55 * k; b.ring.material.opacity = .8 * k; b.ring.scale.setScalar(1 + Math.sin(time * 2 + b.t) * .08) }
+})
+const PREF = { buildings: ['name', 'roof_color'], islands: ['name', 'altitude'], residents: ['name', 'occupation'], lanterns: ['id', 'brightness'], routes: ['route_type', 'from_island_id'] }
+function fieldsHtml(columns, row, table, star) {
+  const skip = ['__id', '__ord']
+  if (star) { const pick = PREF[table].map(c => columns.indexOf(c)).filter(i => i >= 0); return pick.map((i, k) => k ? `<small>${esc(columns[i])} ${esc(row[i])}</small>` : esc(row[i])) }
+  const parts = []; columns.forEach((c, i) => { if (!skip.includes(c) && parts.length < 3) parts.push(parts.length ? `<small>${esc(c)} ${esc(row[i])}</small>` : esc(row[i])) })
+  return parts
+}
+function scanWave() {
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.96, 1, 128), new THREE.MeshBasicMaterial({ color: new THREE.Color(.75, .85, 1.25), transparent: true, opacity: .55, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }))
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 2.2; scene.add(ring); VIZ.objs.push(ring)
+  let t = 0; const u = dt => { t += dt; const r = 1 + t * 22; ring.scale.setScalar(r); ring.material.opacity = .55 * Math.max(0, 1 - t / 2.6); if (t > 2.7) UPDATERS.splice(UPDATERS.indexOf(u), 1) }
+  UPDATERS.push(u)
+}
+const trailMat = color => new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+  uniforms: { uColor: { value: new THREE.Color(color) }, uReveal: { value: 0 }, uTime: { value: 0 }, uHi: { value: 0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `uniform vec3 uColor; uniform float uReveal; uniform float uTime; uniform float uHi; varying vec2 vUv;
+    void main(){ if (vUv.x > uReveal) discard; float pulse = 0.5 + 0.5 * sin(vUv.x * 26.0 - uTime * 2.4);
+      float head = smoothstep(uReveal - 0.08, uReveal, vUv.x) * step(uReveal, 0.999);
+      float a = (0.28 + 0.42 * pulse + head * 1.2) * smoothstep(0.0, 0.04, vUv.x) * (1.0 + uHi * 1.6);
+      gl_FragColor = vec4(uColor * a * 1.5, a); }`,
+})
+function trail(from, to, color, meta, delay) {
+  const mid = from.clone().lerp(to, .5); mid.y = Math.max(from.y, to.y) + 2 + from.distanceTo(to) * .18
+  const curve = new THREE.QuadraticBezierCurve3(from, mid, to)
+  const m = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, .05, 6), trailMat(color)); m.userData.trail = meta
+  scene.add(m); VIZ.objs.push(m); VIZ.hoverables.push(m); VIZ.trails.push({ m, delay, t: 0 })
+}
+UPDATERS.push(dt => { for (const T of VIZ.trails) { T.t += dt; const u = T.m.material.uniforms; u.uTime.value = time; u.uReveal.value = clamp01((T.t - T.delay) / 1.6); u.uHi.value += ((hover.key === T.m.uuid ? 1 : 0) - u.uHi.value) * Math.min(1, dt * 8) } })
+
+function orderPath(table, ordered, ordVals) {
+  const pts = []
+  ordered.forEach((id, i) => {
+    const get = anchorOf[table]?.(id); if (!get) return
+    const base = get(new THREE.Vector3()), lift = (table === 'islands' ? 3 : 1.6) + (ordered.length - i) * (table === 'islands' ? .9 : .35)
+    const top = base.clone().add(new THREE.Vector3(0, lift, 0)); pts.push(top)
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, 1, 6, 1, true), beaconMat()); stem.position.copy(base); scene.add(stem); VIZ.objs.push(stem)
+    const orb = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: '#d6e2ff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })); orb.scale.setScalar(.9); orb.position.copy(base); scene.add(orb); VIZ.objs.push(orb)
+    const delay = i * .35; let t = 0
+    const u = dt => { t += dt; const k = ease(clamp01((t - delay) / 1.1)); orb.position.lerpVectors(base, top, k); orb.material.opacity = .9 * k; stem.scale.y = Math.max(.001, lift * k); stem.position.y = base.y + lift * k / 2; stem.material.opacity = .35 * k; if (t > delay + 1.2 && UPDATERS.indexOf(u) >= 0) UPDATERS.splice(UPDATERS.indexOf(u), 1) }
+    UPDATERS.push(u)
+    const name = table === 'islands' ? ISLAND_ROWS.get(id)?.name : table === 'buildings' ? STATE.buildings.get(id)?.name : `#${id}`
+    label(`viz:rank:${id}`, `#${i + 1} · ${esc(name)}<small>${esc(ordVals[i])}${table === 'islands' && /altitude/i.test(String(VIZ.ordName)) ? ' m' : ''}</small>`, v => v.copy(top), 'rank')
+  })
+  if (pts.length < 2) return
+  // a soft guiding light travels from first to last
+  const guide = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: '#ffe3b5', transparent: true, opacity: .95, depthWrite: false, blending: THREE.AdditiveBlending })); guide.scale.setScalar(2.2); scene.add(guide); VIZ.objs.push(guide)
+  const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal'), dur = Math.max(4, pts.length * 1.3), start = ordered.length * .35 + .6
+  const pl = lightPool[7]; if (pl.owner) pl.owner.light = null; pl.owner = { guide: true }
+  let t = 0
+  VIZ.follow = { get: v => v.copy(guide.position) }
+  const u = dt => {
+    t += dt; const k = ease(clamp01((t - start) / dur)); guide.position.copy(curve.getPoint(k))
+    pl.light.position.copy(guide.position); pl.light.intensity = t > start && k < 1 ? 6 : 0
+    if (k >= 1 && t > start + dur + .5) { UPDATERS.splice(UPDATERS.indexOf(u), 1); VIZ.follow = null; pl.owner = null; pl.light.intensity = 0 }
+  }
+  UPDATERS.push(u)
+}
+UPDATERS.push(dt => { if (VIZ.follow && !cine.kind) { const p = VIZ.follow.get(new THREE.Vector3()); const d = p.sub(controls.target).multiplyScalar(Math.min(1, dt * 1.1)); controls.target.add(d); camera.position.add(d) } })
+
+const GROUP_COLORS = { red: '#e0915c', green: '#9bbd78', slate: '#9fb2cf', brown: '#c19a72', cream: '#e6d7b3' }
+const PALETTE = ['#e0b56a', '#9fc7b7', '#c7a3d9', '#d99a8f', '#a9b9e0', '#d6c38a']
+
+function focusEntities(table, ids, how) {
+  const pts = entityPoints(table, ids.length ? ids : allIds(table))
+  if (!pts.length) return
+  if (how === 'close') frameAround(pts, { elevation: .32, distance: .9, min: 11 })
+  else if (how === 'readable') frameAround(pts, { elevation: .55, distance: 1.05, min: 20 })
+  else if (how === 'aerial') frameAround(pts, { elevation: 1.0, distance: 1.05, min: 30 })
+  else if (how === 'high') frameAround(pts, { elevation: 1.18, distance: 1.15, min: 34 })
+  else if (how === 'lantern') frameAround(pts, { elevation: .3, distance: 1, min: 6 })
+}
+
+// in a JOIN, an island is reached at its "heart" on the ground, marked by a soft ring
+function joinAnchor(table, id) {
+  if (table !== 'islands') return anchorOf[table]?.(id)
+  const isl = ENT.islands.get(id); if (!isl) return null
+  if (!VIZ.hearts.has(id)) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(id === 1 ? .9 : .6, .035, 6, 48), beaconMat()); ring.rotation.x = Math.PI / 2; ring.position.copy(isl.heart.position).add(new THREE.Vector3(0, .08, 0)); isl.group.add(ring)
+    VIZ.objs.push(ring); VIZ.beacons.push({ m: ring, ring, t: 0 }); VIZ.hearts.add(id)
+  }
+  return v => isl.heart.getWorldPosition(v)
+}
+function visualize(plan, out) {
+  const main = out.res.results.filter(r => r.columns.length).at(-1)
+  const rowCount = main ? main.rows.length : 0
+  const comp = out.comp[0]
+  const summary = { kind: plan.kind, rows: rowCount }
+  if (['select', 'where', 'order'].includes(plan.kind)) {
+    if (!comp?.ok) return { ...summary, note: 'visual mapping query failed: ' + comp?.error }
+    const ids = comp.rows.map(r => r[0]), T = plan.table
+    illuminate(T, ids, { dimOthers: plan.kind === 'where' })
+    if (plan.kind !== 'order') comp.rows.forEach(r => { const get = anchorOf[T]?.(r[0]); if (get) label(`viz:${T}:${r[0]}`, (plan.kind === 'where' ? '◆ ' : '') + (fieldsHtml(comp.columns, r, T, plan.list.trim() === '*').join('') || `#${r[0]}`), get) })
+    if (plan.kind === 'where') { scanWave(); hud(`MATCHED ${NOUN[T]}: ${rowCount}`); focusEntities(T, [], 'readable') }
+    else if (plan.kind === 'select') { hud(`${NOUN[T]} RETURNED: ${rowCount}`); focusEntities(T, ids, T === 'buildings' ? 'close' : 'readable') }
+    else { VIZ.ordName = plan.orderExpr; orderPath(T, ids, comp.rows.map(r => r[1])); hud(`ORDER BY ${plan.orderExpr.toUpperCase()} · ${rowCount} ${NOUN[T]}`); focusEntities(T, ids, 'aerial') }
+    return { ...summary, ids }
+  }
+  if (plan.kind === 'join') {
+    if (!comp?.ok) return { ...summary, note: 'visual mapping query failed: ' + comp?.error }
+    const aliasTable = { [plan.ra.toLowerCase()]: plan.A, [plan.rb.toLowerCase()]: plan.B, [plan.A]: plan.A, [plan.B]: plan.B }
+    const side = k => { const [al, col] = k.includes('.') ? k.split('.') : [plan.ra, k]; return { table: aliasTable[al.toLowerCase()] ?? plan.A, col } }
+    const s1 = side(plan.k1), s2 = side(plan.k2)
+    const one = s1.col === 'id' ? s1 : s2.col === 'id' ? s2 : null, many = one === s1 ? s2 : s1
+    const rel = one ? `${many.table}.${many.col} → ${one.table}.id · many-to-one` : `${s1.table}.${s1.col} = ${s2.table}.${s2.col}`
+    let matched = 0
+    comp.rows.slice(0, 80).forEach(([a, b], i) => {
+      const ga = joinAnchor(plan.A, a); if (!ga) return
+      const pa = ga(new THREE.Vector3())
+      if (b === null) { label(`viz:null:${a}:${i}`, `NO MATCH · NULL<small>${plan.A} #${a}</small>`, ga, 'ghost'); return }
+      const gb = joinAnchor(plan.B, b); if (!gb) return
+      const rowA = SNAP[plan.A]?.find(r => r.id === a), rowB = SNAP[plan.B]?.find(r => r.id === b)
+      const keyVal = rowA && rowB ? (s1.table === plan.A ? rowA : rowB)[s1.col] : '?'
+      trail(pa, gb(new THREE.Vector3()), plan.A === 'routes' || plan.B === 'routes' ? '#ffc98a' : '#ffb870', {
+        src: `${plan.A} #${a} · ${esc(rowA?.[ENT_FIELD[plan.A]] ?? '')}`, dst: `${plan.B} #${b} · ${esc(rowB?.[ENT_FIELD[plan.B]] ?? '')}`,
+        key: `${plan.k1} = ${plan.k2} = ${esc(keyVal)}`, rel,
+      }, i * .06)
+      matched++
+    })
+    hud(`RELATIONSHIPS TRACED: ${matched}${rowCount > matched ? ` · ${rowCount - matched} WITHOUT MATCH` : ''}`)
+    focusEntities(plan.B === 'islands' || plan.A === 'islands' ? 'islands' : plan.A, [], 'aerial')
+    return { ...summary, trails: matched }
+  }
+  if (plan.kind === 'group') {
+    if (!comp?.ok) return { ...summary, note: 'visual mapping query failed: ' + comp?.error }
+    const counts = new Map(main.rows.map(r => [String(r[0]), r[1]]))   // from the real GROUP BY result
+    const groups = new Map(); comp.rows.forEach(([id, v]) => { const k = String(v); if (counts.has(k)) { if (!groups.has(k)) groups.set(k, []); groups.get(k).push(id) } })
+    let gi = 0
+    for (const [val, ids] of groups) {
+      const color = GROUP_COLORS[val] ?? PALETTE[gi++ % PALETTE.length], pts = entityPoints(plan.table, ids)
+      ids.forEach((id, j) => { const get = anchorOf[plan.table]?.(id); if (!get) return; const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color, transparent: true, opacity: .9, depthWrite: false, blending: THREE.AdditiveBlending })); sp.scale.setScalar(1.3); scene.add(sp); VIZ.objs.push(sp); UPDATERS.push(function u() { if (!sp.parent) { UPDATERS.splice(UPDATERS.indexOf(u), 1); return } get(sp.position).y += .5 }) })
+      if (plan.table === 'buildings') ids.forEach(id => STATE.hl.set(id, 'on'))
+      if (!pts.length) continue
+      const c = new THREE.Vector3(); pts.forEach(p => c.add(p)); c.divideScalar(pts.length); c.y = Math.max(...pts.map(p => p.y)) + 3.2
+      // spread indicators in a ring so groups whose centroids fall close together stay readable
+      const ga = groups.size > 1 ? [...groups.keys()].indexOf(val) / groups.size * Math.PI * 2 : 0
+      c.x += Math.cos(ga) * 4.2; c.z += Math.sin(ga) * 4.2; c.y += ([...groups.keys()].indexOf(val) % 2) * 1.4
+      label(`viz:group:${val}`, `${esc(counts.get(val))}<small>${esc(plan.col)} = ${esc(val)}</small>`, v => v.copy(c), 'group').el.style.setProperty('--gc', color)
+    }
+    hud(`GROUPS: ${counts.size} · ROWS COUNTED: ${[...counts.values()].reduce((a, b) => a + Number(b), 0)}`)
+    focusEntities(plan.table, [], 'high')
+    return { ...summary, groups: Object.fromEntries(counts) }
+  }
+  return summary
+}
+
+/* mutations: the world already changed through applySnapshot — narrate it */
+function narrate(ch) {
+  const focus = []; let n = 0
+  for (const id of ch.lanternsAdded) { const L = ENT.lanterns.get(id); if (!L) continue; n++; focus.push(['lanterns', id]); label(`viz:lnew:${id}`, `NEW LANTERN #${id}<small>building ${esc(L.row.building_id)} · brightness ${esc(L.row.brightness)}</small>`, anchorOf.lanterns(id), 'delta') }
+  for (const c of ch.lanternsChanged) { n++; focus.push(['lanterns', c.id]); const diff = ['brightness', 'active', 'building_id'].filter(f => c.from[f] !== c.to[f]).map(f => `${f} ${esc(c.from[f])} → ${esc(c.to[f])}`).join(' · '); label(`viz:lchg:${c.id}`, `LANTERN #${c.id}<small>${diff}</small>`, anchorOf.lanterns(c.id), 'delta') }
+  for (const id of ch.lanternsRemoved) { const L = ENT.lanterns.get(id); if (!L) continue; n++; const p = L.group.getWorldPosition(new THREE.Vector3()); focus.push(p); label(`viz:ldel:${id}`, `LANTERN #${id} DELETED<small>light removed from the world</small>`, v => v.copy(p).add(new THREE.Vector3(0, .5, 0)), 'ghost') }
+  for (const c of ch.buildingFields) { n++; focus.push(['buildings', c.id]); STATE.hl.set(c.id, 'on'); label(`viz:bchg:${c.id}:${c.field}`, `#${c.id} ${esc(STATE.buildings.get(c.id)?.name)}<small>${c.field} ${esc(c.from)} → ${esc(c.to)}</small>`, anchorOf.buildings(c.id), 'delta') }
+  for (const id of ch.buildingsDeleted) { n++; focus.push(['buildings', id]) }
+  for (const id of ch.buildingsAdded) { n++; const bp = blueprints.get(id); if (bp) focus.push(bp.getWorldPosition(new THREE.Vector3())) }
+  for (const c of ch.residents) { if (!ENT.buildings.has(c.id)) continue; n++; focus.push(['buildings', c.id]); STATE.hl.set(c.id, 'on'); label(`viz:res:${c.id}`, `#${c.id} ${esc(STATE.buildings.get(c.id)?.name)}<small>residents ${c.from} → ${c.to} · lit windows follow</small>`, anchorOf.buildings(c.id), 'delta') }
+  for (const c of ch.islands) { n++; focus.push(['islands', c.id]) }
+  for (const c of ch.routes) n++
+  const pts = focus.map(f => f.isVector3 ? f : anchorOf[f[0]]?.(f[1])?.(new THREE.Vector3())).filter(Boolean)
+  if (pts.length) frameAround(pts, { elevation: .32, distance: 1, min: pts.length === 1 ? 7 : 12 })
+  return n
+}
+
+/* =====================================================================
+   22. SQL DOCK · CATEGORIES · RUN
+   ===================================================================== */
+const CATS = [
+  { id: 'select', name: 'SELECT', tag: 'ILLUMINATE THE CASTLE', sql: 'SELECT name, type\nFROM buildings;', thai: 'เลือกคอลัมน์ที่ต้องการจากตาราง ทุกอาคารที่อยู่ในผลลัพธ์จะสว่างขึ้นเล็กน้อย และมีป้ายบอกค่าที่เลือกไว้ใกล้หลังคา', explain: 'แต่ละอาคารในเมืองคือหนึ่งแถวในตาราง buildings (id ตรงกับวัตถุ 3D) หน้าต่างที่สว่างคือห้องที่มีผู้อยู่อาศัยในตาราง residents ส่วนตะเกียงแต่ละดวงคือหนึ่งแถวใน lanterns', focus: () => focusEntities('buildings', WORLD.buildings.filter(b => b.island_id === 1).map(b => b.id), 'close') },
+  { id: 'where', name: 'WHERE', tag: 'FILTER THE FLOATING WORLD', sql: "SELECT *\nFROM buildings\nWHERE roof_color = 'red';", thai: 'กรองเฉพาะแถวที่ตรงเงื่อนไข อาคารที่ตรงจะเรืองแสงพร้อมเครื่องหมาย ◆ ส่วนที่ไม่ตรงจะจางลงแต่ยังอยู่ครบ จำนวนที่แสดงมาจากผลลัพธ์จริง', explain: "ลองเปลี่ยนเงื่อนไข เช่น WHERE occupied = 0 หรือ WHERE type = 'cottage' หรือกรองตารางอื่น เช่น SELECT * FROM lanterns WHERE brightness > 0.7", focus: () => focusEntities('buildings', [], 'readable') },
+  { id: 'order', name: 'ORDER BY', tag: 'REVEAL ORDER IN SPACE', sql: 'SELECT *\nFROM islands\nORDER BY altitude DESC;', thai: 'เรียงลำดับผลลัพธ์ เกาะไม่ถูกย้ายจริง แต่จะมีป้ายลำดับลอยขึ้นตามลำดับที่ SQLite คืนมา และแสงนำทางจะไล่จากอันดับแรกไปอันดับสุดท้าย', explain: 'ความสูงของเกาะในฉากคำนวณจากคอลัมน์ altitude จริง ลอง ORDER BY name หรือเปลี่ยนเป็น ASC แล้วดูลำดับเปลี่ยน', focus: () => focusEntities('islands', [], 'aerial') },
+  { id: 'join', name: 'JOIN', tag: 'CONNECT THE FLOATING ISLANDS', sql: 'SELECT buildings.name, islands.name\nFROM buildings\nJOIN islands\nON buildings.island_id = islands.id;', thai: 'จับคู่แถวจากสองตารางด้วยคีย์ที่ตรงกัน เส้นแสงแต่ละเส้นคือหนึ่งคู่ที่ SQLite จับได้จริง ชี้เมาส์ที่เส้นเพื่อดูแถวต้นทาง ปลายทาง และค่าคีย์', explain: 'ลอง JOIN ตารางอื่น เช่น lanterns กับ buildings (ON lanterns.building_id = buildings.id) หรือ residents กับ buildings แล้วใช้ LEFT JOIN เพื่อดูแถวที่ไม่มีคู่', focus: () => focusEntities('islands', [], 'aerial') },
+  { id: 'group', name: 'GROUP BY', tag: 'ORGANIZE THE VILLAGE', sql: 'SELECT roof_color, COUNT(*)\nFROM buildings\nGROUP BY roof_color;', thai: 'รวมแถวที่มีค่าเหมือนกันเป็นกลุ่มแล้วนับ อาคารจะมีจุดสีตามกลุ่มของตัวเอง และตัวเลขลอยเหนือแต่ละกลุ่มคือ COUNT จริง ไม่มีอาคารไหนถูกย้าย', explain: 'ลอง GROUP BY island_id หรือ GROUP BY type ก็ได้ ตัวเลขทุกตัวมาจากผลลัพธ์ของ GROUP BY จริง', focus: () => focusEntities('buildings', [], 'high') },
+  { id: 'insert', name: 'INSERT', tag: 'BRING SOMETHING INTO THE WORLD', sql: 'INSERT INTO lanterns\n(building_id, brightness, active)\nVALUES (3, 0.8, 1);', thai: 'เพิ่มแถวใหม่ลงตาราง ตะเกียงดวงใหม่จะค่อย ๆ ประกอบขึ้นบนอาคารที่ระบุ (building 3 คือ East Tower) และอยู่ในโลกตลอด session จนกว่าจะกด RESET', explain: 'ตะเกียงจะไปอยู่ในช่องติดตั้งที่ว่างของอาคารนั้น ถ้าช่องเต็มจะตั้งเป็นเสาไฟข้างอาคาร ลองใส่ building_id ที่ไม่มีอยู่ เช่น 99 จะเห็นว่า FOREIGN KEY ไม่ยอมให้เพิ่ม', focus: () => focusEntities('buildings', [3], 'lantern') },
+  { id: 'update', name: 'UPDATE', tag: 'CHANGE THE WORLD', sql: 'UPDATE lanterns\nSET brightness = 1.0\nWHERE id = 2;', thai: 'แก้ค่าในแถวที่มีอยู่ ตะเกียงดวงที่ 2 จะค่อย ๆ สว่างขึ้นตามค่าใหม่ และมีป้ายบอกค่าก่อนและหลัง', explain: "ลอง UPDATE buildings SET roof_color = 'green' WHERE id = 7 หลังคาจะค่อย ๆ เปลี่ยนสี หรือ UPDATE buildings SET occupied = 0 WHERE id = 5 หน้าต่างจะดับ", focus: () => focusEntities('lanterns', [2], 'lantern') },
+  { id: 'delete', name: 'DELETE', tag: 'REMOVE AN OBJECT', sql: 'DELETE FROM lanterns\nWHERE id = 2;', thai: 'ลบแถวออกจากตาราง ตะเกียงจะกะพริบ หรี่ลง แล้วสลายเป็นละอองแสง ตัวปราสาทยังอยู่ครบ', explain: 'ถ้าลบแถวที่เป็นโครงสร้าง เช่น DELETE FROM buildings WHERE id = 8 ตัวบ้านจะยังอยู่แต่ไฟดับ และมีป้ายบอกว่าแถวถูกลบ (ตะเกียงและผู้อยู่อาศัยของบ้านนั้นจะถูกลบตาม ON DELETE CASCADE)', focus: () => focusEntities('lanterns', [2], 'lantern') },
+  { id: 'lab', name: 'SQL INJECTION LAB', tag: 'THE HIDDEN TOWER', lab: true },
+]
+let currentCat = CATS[0]
+const catsNav = $('cats')
+for (const c of CATS) {
+  const b = document.createElement('button'); b.textContent = c.name; b.dataset.id = c.id; if (c.lab) b.className = 'lab'
+  b.setAttribute('aria-pressed', 'false'); b.onclick = () => chooseCat(c.id); catsNav.appendChild(b)
+}
+function chooseCat(id, { focus = true } = {}) {
+  const c = CATS.find(x => x.id === id); if (!c) return
+  if (c.lab) { enterLab(); return }
+  currentCat = c
+  for (const b of catsNav.children) b.setAttribute('aria-pressed', b.dataset.id === id)
+  $('catName').textContent = c.name; $('catTag').textContent = c.tag; $('catThai').textContent = c.thai
+  $('sqlInput').value = c.sql; $('explain').textContent = c.explain
+  $('textview').hidden = true; setStatus('')
+  clearViz(); hideInspector()
+  if (focus) { interrupt(); c.focus() }
+}
+function setStatus(html, err = false) { const s = $('status'); s.innerHTML = html; s.classList.toggle('err', err) }
+let lastResult = null
+async function runSQL(sql) {
+  if (!sqlReady) { setStatus('SQLite is still loading…'); return null }
+  const plan = planQuery(sql)
+  clearViz(); hideInspector(); $('textview').hidden = true
+  $('runBtn').disabled = true
+  let out
+  try { out = await engine.call({ type: 'run', sql, companions: plan.companion ? [plan.companion] : [] }) }
+  catch (e) { $('runBtn').disabled = false; setStatus(e.message === 'timeout' ? 'Query took longer than 5 s and was stopped. The database was restored to its seed state.' : esc(e.message), true); return { ok: false, error: e.message } }
+  $('runBtn').disabled = false
+  const ch = applySnapshot(out.snapshot, { animate: true })
+  lastResult = out.res
+  const main = out.res.results.filter(r => r.columns.length).at(-1)
+  const changes = out.res.results.filter(r => r.changes !== undefined && /^\s*(insert|update|delete|replace)/i.test(r.sql)).reduce((a, r) => a + r.changes, 0)
+  const textLink = ' · <button class="link" id="showText">text result</button>'
+  if (!out.res.ok) {
+    setStatus(`<b>SQL ERROR</b> · ${esc(out.res.error)}`, true)
+    narrate(ch)
+    return { ok: false, error: out.res.error, plan: plan.kind }
+  }
+  let summary = { ok: true, plan: plan.kind, rows: main?.rows.length ?? 0, changes, ms: +out.ms.toFixed(2) }
+  if (plan.kind === 'mutation' || plan.kind === 'multi' || changes) {
+    const n = narrate(ch)
+    summary = { ...summary, lanternsAdded: ch.lanternsAdded, lanternsChanged: ch.lanternsChanged.map(c => c.id), lanternsRemoved: ch.lanternsRemoved, buildingFields: ch.buildingFields.length, buildingsDeleted: ch.buildingsDeleted, residents: ch.residents.length }
+    setStatus(`<b>${plan.verb?.toUpperCase() ?? 'SQL'}</b> · ${changes} row${changes === 1 ? '' : 's'} changed · ${out.ms.toFixed(1)} ms${n ? ` · ${n} world change${n === 1 ? '' : 's'}` : ' · nothing in the world needed to change'}${main ? textLink : ''}`)
+  } else if (['select', 'where', 'order', 'join', 'group'].includes(plan.kind)) {
+    const v = visualize(plan, out); summary = { ...summary, ...v }
+    setStatus(`<b>${plan.kind.toUpperCase()}</b> · ${summary.rows} row${summary.rows === 1 ? '' : 's'} · ${out.ms.toFixed(1)} ms${v.note ? ` · ${esc(v.note)}` : ''}${textLink}`)
+  } else {
+    setStatus(`Executed · ${summary.rows} row${summary.rows === 1 ? '' : 's'} · ${out.ms.toFixed(1)} ms — visual operation unavailable${plan.why ? ` (${esc(plan.why)})` : ''}${main || out.res.results.length ? textLink : ''}`)
+  }
+  $('showText')?.addEventListener('click', showText)
+  return summary
+}
+function showText() {
+  const tv = $('textview'), res = lastResult; if (!res) return
+  const last = res.results.filter(r => r.columns.length).at(-1)
+  if (!last) { tv.innerHTML = `${res.results.length} statement(s) executed, no rows returned.`; tv.hidden = false; return }
+  tv.innerHTML = `<div class="scroll"><table><thead><tr>${last.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${last.rows.slice(0, 40).map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${last.rows.length > 40 ? `<div>+ ${last.rows.length - 40} more rows</div>` : ''}`
+  tv.hidden = false
+}
+$('runBtn').onclick = () => runSQL($('sqlInput').value)
+$('sqlInput').addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runSQL($('sqlInput').value) } })
+$('resetBtn').onclick = async () => {
+  if (!sqlReady) return
+  clearViz(); hideInspector()
+  const r = await engine.call({ type: 'reset', seed: SEED_SQL, labSeed: LAB_SEED })
+  applySnapshot(r.snapshot); $('sqlInput').value = currentCat.sql
+  setStatus('Database restored to its seed state · the world follows')
+}
+$('explainBtn').onclick = e => { const ex = $('explain'); ex.hidden = !ex.hidden; e.currentTarget.setAttribute('aria-expanded', !ex.hidden) }
+$('exploreBtn').onclick = () => { document.body.classList.add('sql-mode'); chooseCat(currentCat.id); $('sqlInput').focus({ preventScroll: true }) }
+$('leaveBtn').onclick = () => { document.body.classList.remove('sql-mode'); clearViz(); hideInspector(); interrupt(); flyTo(HERO.pos, HERO.target, 2.6) }
+$('collapseBtn').onclick = e => { const p = $('sqlPanel'); p.classList.toggle('collapsed'); e.currentTarget.setAttribute('aria-expanded', !p.classList.contains('collapsed')) }
+engine.onRestart = async () => {
+  try { const r = await engine.call({ type: 'init', seed: SEED_SQL, labSeed: LAB_SEED }, 25000); applySnapshot(r.snapshot, { animate: false }); clearViz() } catch { /* status already shows the timeout */ }
+}
+
+/* =====================================================================
+   23. INSPECTOR · HOVER · CLICK
+   ===================================================================== */
+let inspectorAnchor = null
+function hideInspector() { $('inspector').hidden = true; inspectorAnchor = null }
+async function inspect(pick) {
+  const box = $('inspector'); let html = ''
+  const { table, id } = pick
+  if (table === 'buildings') {
+    const b = await engine.call({ type: 'query', sql: 'SELECT b.id, b.name, b.type, b.roof_color, b.occupied, i.name AS island FROM buildings b JOIN islands i ON i.id = b.island_id WHERE b.id = ?', params: [id] })
+    const r = await engine.call({ type: 'query', sql: 'SELECT name, occupation, age FROM residents WHERE building_id = ? ORDER BY id', params: [id] })
+    const l = await engine.call({ type: 'query', sql: 'SELECT id, brightness, active FROM lanterns WHERE building_id = ? ORDER BY id', params: [id] })
+    if (!b.rows?.length) html = `<header>BUILDING #${id}<button class="icon-btn" data-close>✕</button></header><h3>${esc(STATE.buildings.get(id)?.name)}</h3><div class="sub">This row is no longer in the database. The architecture is kept as a simulation overlay.</div>`
+    else {
+      const [bid, name, type, roof, occ, island] = b.rows[0]
+      html = `<header>BUILDINGS · ID ${bid}<button class="icon-btn" data-close aria-label="Close">✕</button></header><h3>${esc(name)}</h3><dl><dt>type</dt><dd>${esc(type)}</dd><dt>roof_color</dt><dd>${esc(roof)}</dd><dt>occupied</dt><dd>${esc(occ)}</dd><dt>island</dt><dd>${esc(island)}</dd></dl>
+      <div class="sub">residents · ${r.rows.length ? r.rows.map(x => `${esc(x[0])} (${esc(x[1])}, ${esc(x[2])})`).join(', ') : 'none'}</div>
+      <div class="sub">lanterns · ${l.rows.length ? l.rows.map(x => `#${x[0]} ${x[2] ? '' : 'off · '}${x[1]}`).join(', ') : 'none'}</div>`
+    }
+  } else if (table === 'islands') {
+    const i = await engine.call({ type: 'query', sql: 'SELECT id, name, altitude, district, (SELECT COUNT(*) FROM buildings WHERE island_id = islands.id) AS buildings FROM islands WHERE id = ?', params: [id] })
+    if (!i.rows?.length) html = `<header>ISLAND #${id}<button class="icon-btn" data-close>✕</button></header><div class="sub">This row is no longer in the database.</div>`
+    else { const [iid, name, alt, district, nb] = i.rows[0]; html = `<header>ISLANDS · ID ${iid}<button class="icon-btn" data-close aria-label="Close">✕</button></header><h3>${esc(name)}</h3><dl><dt>altitude</dt><dd>${esc(alt)} m</dd><dt>district</dt><dd>${esc(district)}</dd><dt>buildings</dt><dd>${esc(nb)}</dd></dl>` }
+  } else if (table === 'lanterns') {
+    const l = await engine.call({ type: 'query', sql: 'SELECT l.id, l.brightness, l.active, b.name, l.island_id FROM lanterns l LEFT JOIN buildings b ON b.id = l.building_id WHERE l.id = ?', params: [id] })
+    if (!l.rows?.length) return
+    const [lid, br, act, bname, iid] = l.rows[0]
+    html = `<header>LANTERNS · ID ${lid}<button class="icon-btn" data-close aria-label="Close">✕</button></header><h3>Lantern #${lid}</h3><dl><dt>brightness</dt><dd>${esc(br)}</dd><dt>active</dt><dd>${esc(act)}</dd><dt>building</dt><dd>${esc(bname ?? '—')}</dd>${iid ? `<dt>island_id</dt><dd>${esc(iid)}</dd>` : ''}</dl>`
+  }
+  box.innerHTML = html; box.hidden = false
+  box.querySelector('[data-close]')?.addEventListener('click', hideInspector)
+  inspectorAnchor = anchorOf[table]?.(id) ?? null
+}
+UPDATERS.push(() => {
+  if (!inspectorAnchor || $('inspector').hidden) return
+  const p = inspectorAnchor(new THREE.Vector3()).project(camera), box = $('inspector')
+  const x = Math.min(innerWidth - 280, Math.max(12, (p.x * .5 + .5) * innerWidth + 24)), y = Math.min(innerHeight - box.offsetHeight - 12, Math.max(12, (-p.y * .5 + .5) * innerHeight - 40))
+  box.style.left = x + 'px'; box.style.top = y + 'px'
+})
+const tip = $('tooltip')
+canvas.addEventListener('pointermove', ev => {
+  if (labMode) return
+  pointer.set(ev.clientX / innerWidth * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1); raycaster.setFromCamera(pointer, camera)
+  const th = VIZ.hoverables.length ? raycaster.intersectObjects(VIZ.hoverables, false)[0] : null
+  if (th) {
+    const m = th.object.userData.trail; hover.key = th.object.uuid; hover.building = null
+    tip.innerHTML = `<b>SOURCE</b> ${m.src}<br><b>TARGET</b> ${m.dst}<br><b>KEY</b> ${m.key}<br><b>RELATIONSHIP</b> ${m.rel}`
+  } else {
+    hover.key = null
+    const pick = raycaster.intersectObjects(pickables, false)[0]?.object.userData.pick
+    hover.building = pick?.table === 'buildings' ? pick.id : null
+    if (pick) {
+      const name = pick.table === 'buildings' ? STATE.buildings.get(pick.id)?.name : pick.table === 'islands' ? ISLAND_ROWS.get(pick.id)?.name : `Lantern #${pick.id}`
+      tip.innerHTML = `<b>${pick.table.toUpperCase()} · ${pick.id}</b><br>${esc(name)}`
+    }
+    if (!pick) { tip.hidden = true; canvas.style.cursor = ''; return }
+  }
+  tip.hidden = false; canvas.style.cursor = 'pointer'
+  tip.style.left = Math.min(innerWidth - 330, ev.clientX + 16) + 'px'; tip.style.top = (ev.clientY + 16) + 'px'
+})
+canvas.addEventListener('pointerleave', () => { tip.hidden = true; hover.building = null; hover.key = null })
+canvas.addEventListener('pointerdown', ev => { downAt = [ev.clientX, ev.clientY] })
+canvas.addEventListener('pointerup', ev => {
+  if (!downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 5 || labMode) return
+  const pick = pickAt(ev)
+  if (!pick) { hideInspector(); return }
+  interrupt()
+  const get = anchorOf[pick.table]?.(pick.id)
+  if (get) { const p = get(new THREE.Vector3()); frameAround([p], { elevation: .32, min: pick.table === 'islands' ? 16 : pick.table === 'lanterns' ? 5 : 9 }) }
+  if (sqlReady) inspect(pick)
+})
+
+/* =====================================================================
+   24. SQL INJECTION LAB — a small chamber inside the Moon Tower
+   ===================================================================== */
+const CHAMBER_Y = -150
+const chamber = new THREE.Group(); chamber.position.set(0, CHAMBER_Y, 0); chamber.visible = false; scene.add(chamber)
+const gate = { bars: new THREE.Group(), lift: 0, want: 0 }
+const labLights = { warmA: new THREE.PointLight('#ffb067', 0, 9, 2), warmB: new THREE.PointLight('#ffb067', 0, 9, 2), sec: new THREE.PointLight('#ff6a4a', 0, 8, 2), moon: new THREE.SpotLight('#9fb4ff', 0, 14, .32, .6, 1.2) }
+scene.add(labLights.warmA, labLights.warmB, labLights.sec, labLights.moon, labLights.moon.target)
+const holo = []
+{
+  const R = 4.2, H = 5.2
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, 40, 1, true), new THREE.MeshStandardMaterial({ map: TEX.stone, color: '#a8957e', roughness: .9, side: THREE.BackSide }))
+  { const uv = wall.geometry.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 9, uv.getY(i) * 3.4) }
+  wall.position.y = H / 2; wall.receiveShadow = true; chamber.add(wall)
+  const floor = mesh(new THREE.CircleGeometry(R, 40), MAT.wood, false, true); floor.rotation.x = -Math.PI / 2; chamber.add(floor)
+  const ceil = mesh(new THREE.CircleGeometry(R, 40), MAT.woodDark, false, true); ceil.rotation.x = Math.PI / 2; ceil.position.y = H; chamber.add(ceil)
+  for (let i = -2; i <= 2; i++) chamber.add(box(R * 2, .22, .26, MAT.woodDark, 0, H - .2, i * 1.5, false))
+  // slit windows with moonlight
+  for (const a of [-2.25, -1.55, 1.75, 2.35]) {
+    const slit = new THREE.Mesh(new THREE.PlaneGeometry(.16, 1.1), new THREE.MeshBasicMaterial({ color: new THREE.Color(.55, .65, 1.1), toneMapped: false }))
+    slit.position.set(Math.sin(a) * (R - .03), 3.1, Math.cos(a) * (R - .03)); slit.lookAt(0, 3.1, 0); chamber.add(slit)
+  }
+  const beam = new THREE.Mesh(new THREE.ConeGeometry(1.1, 4.2, 24, 1, true), new THREE.MeshBasicMaterial({ color: '#8fa6e6', transparent: true, opacity: .07, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }))
+  beam.position.set(-1.0, 1.6, 2.3); beam.rotation.set(.55, 0, .45); chamber.add(beam)
+  // archway + portcullis gate on the back wall
+  chamber.add(box(.5, 3.0, .5, MAT.stone, -1.3, 1.5, -3.75)); chamber.add(box(.5, 3.0, .5, MAT.stone, 1.3, 1.5, -3.75)); chamber.add(box(3.1, .5, .55, MAT.stone, 0, 3.2, -3.75))
+  const door = box(2.1, 2.9, .1, new THREE.MeshStandardMaterial({ color: '#141017', roughness: 1 }), 0, 1.45, -3.95, false); chamber.add(door)
+  for (let i = 0; i < 7; i++) gate.bars.add(cyl(.035, .035, 2.9, MAT.iron, -.9 + i * .3, 1.45, 0, 6))
+  for (let j = 0; j < 4; j++) gate.bars.add(box(2.0, .05, .05, MAT.iron, 0, .4 + j * .75, 0))
+  gate.bars.position.set(0, 0, -3.6); chamber.add(gate.bars)
+  // desk, terminal, lamps
+  chamber.add(box(1.8, .08, .8, MAT.wood, 1.9, .95, .4)); for (const [x, z] of [[1.1, .1], [2.7, .1], [1.1, .7], [2.7, .7]]) chamber.add(cyl(.04, .04, .95, MAT.woodDark, x, .47, z, 6))
+  for (const [x, z, L] of [[-3.2, -1.6, labLights.warmA], [3.2, -1.6, labLights.warmB]]) { const l = makeLanternMesh('wall'); l.group.position.set(x, 2.2, z); l.group.lookAt(0, 2.2, 0); l.glass.emissiveIntensity = 2.6; chamber.add(l.group); L.position.set(x * .85, CHAMBER_Y + 2.2, z * .85) }
+  // holographic teaching panels (canvas, updated with the real assembled query)
+  for (const [x, ry, title, tint] of [[-1.7, .5, 'VULNERABLE QUERY', '#ff9a7a'], [1.7, -.5, 'PREPARED STATEMENT', '#8fe0c6']]) {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 320
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.0), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: .9, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false }))
+    m.position.set(x, 2.15, -2.2); m.rotation.y = ry; chamber.add(m)
+    holo.push({ c, tex, m, title, tint, base: 2.15 }); drawHolo(holo.at(-1), '—')
+  }
+}
+function drawHolo(h, text, state = '') {
+  const g = h.c.getContext('2d'); g.clearRect(0, 0, 512, 320)
+  g.strokeStyle = h.tint; g.globalAlpha = .55; g.strokeRect(6, 6, 500, 308); g.globalAlpha = 1
+  g.fillStyle = h.tint; g.font = '500 22px "Geist Mono", monospace'; g.fillText(h.title, 22, 44)
+  g.font = '18px "Geist Mono", monospace'; g.globalAlpha = .85
+  const words = text.split(/(?<=\s)/); let line = '', y = 92
+  for (const w of words) { if (g.measureText(line + w).width > 466) { g.fillText(line, 22, y); y += 28; line = w } else line += w }
+  g.fillText(line, 22, y); g.globalAlpha = 1
+  if (state) { g.font = '500 20px "Geist Mono", monospace'; g.fillText(state, 22, 290) }
+  h.tex.needsUpdate = true
+}
+UPDATERS.push(dt => {
+  if (!chamber.visible) return
+  gate.lift += (gate.want - gate.lift) * Math.min(1, dt * 1.6); gate.bars.position.y = gate.lift * 2.4
+  holo.forEach((h, i) => { h.m.position.y = h.base + Math.sin(time * 1.2 + i) * .03 })
+  labLights.warmA.intensity = labLights.warmB.intensity = 5 + Math.sin(time * 9) * .25
+})
+let labProtected = false
+function setLabMode(p) { labProtected = p; $('modeVuln').setAttribute('aria-pressed', !p); $('modeSafe').setAttribute('aria-pressed', p); previewLab() }
+$('modeVuln').onclick = () => setLabMode(false)
+$('modeSafe').onclick = () => setLabMode(true)
+$('presetValid').onclick = () => { $('labUser').value = 'warden'; $('labPass').value = 'moonlight-42'; previewLab() }
+$('presetInject').onclick = () => { $('labUser').value = "' OR 1=1 --"; $('labPass').value = 'anything'; previewLab() }
+$('labUser').oninput = $('labPass').oninput = previewLab
+function assembledHtml(u, p, prot) {
+  if (prot) return `SELECT id, username, role FROM accounts\nWHERE username = <span class="ph">?</span> AND password = <span class="ph">?</span>`
+  const head = "SELECT id, username, role FROM accounts\nWHERE username = '", mid = "' AND password = '", tail = "'"
+  const full = head + u + mid + p + tail, ci = full.indexOf('--', head.length)
+  // render the user-supplied parts highlighted; anything after an injected -- is a comment to SQLite
+  const parts = [[head, ''], [u, 'inp'], [mid, ''], [p, 'inp'], [tail, '']]
+  let pos = 0, html = ''
+  for (const [txt, cls] of parts) {
+    let seg = ''
+    for (const ch of txt) { const inComment = ci >= 0 && pos >= ci + 2; seg += `<span class="${[cls, inComment ? 'cm' : ''].filter(Boolean).join(' ')}">${esc(ch)}</span>`; pos++ }
+    html += seg
+  }
+  return html
+}
+function previewLab() {
+  const u = $('labUser').value, p = $('labPass').value
+  $('labSql').innerHTML = assembledHtml(u, p, labProtected)
+  const bound = $('labBound'); bound.hidden = !labProtected
+  if (labProtected) bound.textContent = `bound parameters → [ ${JSON.stringify(u)}, ${JSON.stringify(p)} ]  (sent as data, never parsed as SQL)`
+}
+async function labTest(u, p, prot) {
+  const r = await engine.call({ type: 'lab', user: u, pass: p, protected: prot })
+  const granted = r.ok && r.rows.length > 0, injected = /['"]|--|;/.test(u + p)
+  let thai
+  if (!r.ok) thai = 'SQL ผิดรูปแบบ เพราะข้อความที่พิมพ์ไปทำลายโครงสร้างคำสั่ง นี่คือสัญญาณว่าคำสั่งถูกสร้างด้วยการต่อสตริง (ไม่ปลอดภัย)'
+  else if (!prot && granted && injected) thai = "ข้อความที่พิมพ์มีเครื่องหมาย ' ไปปิดสตริงเอง แล้วต่อเงื่อนไขใหม่ (เช่น OR 1=1) ทำให้ WHERE เป็นจริงกับทุกแถว ส่วน -- ทำให้การตรวจรหัสผ่านกลายเป็นคอมเมนต์ ประตูจึงเปิดทั้งที่ไม่รู้รหัสผ่าน"
+  else if (prot && !granted && injected) thai = 'ค่าที่พิมพ์ถูกส่งเป็นพารามิเตอร์ (bound value) SQLite มองทั้งก้อนเป็นข้อความธรรมดา ไม่ใช่คำสั่ง จึงไม่มีผู้ใช้ชื่อนี้ ประตูไม่เปิด — นี่คือเหตุผลที่ prepared statement ป้องกัน SQL injection ได้'
+  else if (granted) thai = 'ชื่อผู้ใช้และรหัสผ่านตรงกับบัญชีสมมติในฐานข้อมูลจริง จึงเข้าสู่ระบบได้ตามปกติ'
+  else thai = 'ไม่พบบัญชีที่ตรงกับชื่อผู้ใช้และรหัสผ่านนี้ ประตูยังปิดอยู่'
+  return { ...r, granted, injected, thai }
+}
+$('labRun').onclick = async () => {
+  const u = $('labUser').value, p = $('labPass').value
+  $('labRun').disabled = true
+  const r = await labTest(u, p, labProtected).finally(() => { $('labRun').disabled = false })
+  previewLab()
+  const v = $('labVerdict'); v.hidden = false
+  v.className = 'verdict ' + (!r.ok ? 'err' : r.granted ? 'ok' : 'no')
+  v.innerHTML = `<strong>${!r.ok ? 'SQL ERROR' : r.granted ? 'ACCESS GRANTED' : 'ACCESS DENIED'}</strong>
+    <div class="rows">${r.ok ? `${r.rows.length} row${r.rows.length === 1 ? '' : 's'} returned${r.rows.length ? ' · ' + r.rows.map(x => `#${x[0]} ${esc(x[1])} (${esc(x[2])})`).join(', ') : ''}` : esc(r.error)}</div><p>${r.thai}</p>`
+  gate.want = r.granted ? 1 : 0
+  labLights.sec.color.set(!r.ok ? '#ffb347' : r.granted && r.injected ? '#ff5a3c' : r.granted ? '#ffc27a' : '#5fd6b8')
+  labLights.sec.intensity = 9
+  drawHolo(holo[labProtected ? 1 : 0], labProtected ? 'SELECT id, username, role FROM accounts WHERE username = ? AND password = ?   bound: ' + JSON.stringify([u, p]) : r.sql, !r.ok ? 'ERROR' : r.granted ? 'GATE OPEN' : 'GATE SHUT')
+}
+$('labReset').onclick = async () => { await engine.call({ type: 'labReset', labSeed: LAB_SEED }); gate.want = 0; labLights.sec.intensity = 0; $('labVerdict').hidden = true; holo.forEach(h => drawHolo(h, '—')); $('labUser').value = 'warden'; $('labPass').value = ''; previewLab() }
+$('labExit').onclick = exitLab
+async function enterLab() {
+  if (labMode) return
+  labMode = true; clearViz(); hideInspector(); interrupt()
+  for (const b of catsNav.children) b.setAttribute('aria-pressed', b.dataset.id === 'lab')
+  const tower = ENT.buildings.get(2), slitP = tower.slitView.getWorldPosition(new THREE.Vector3()), tc = tower.anchor.getWorldPosition(new THREE.Vector3()).setY(slitP.y - .2)
+  STATE.hl.set(2, 'on')
+  flyTo(slitP, tc, INSTANT ? 0 : 2.4)
+  await wait(INSTANT ? 0 : 2300)
+  $('veil').classList.add('on'); await wait(INSTANT ? 0 : 900)
+  document.body.classList.add('lab-mode'); chamber.visible = true
+  const C = chamber.position
+  camera.position.set(C.x + .5, C.y + 1.8, C.z + 3.5); controls.target.set(C.x, C.y + 1.7, C.z - 1.6)
+  Object.assign(controls, { minDistance: 1.5, maxDistance: 5.6, maxPolarAngle: Math.PI * .62 })
+  labLights.sec.position.set(C.x, C.y + 2.6, C.z - 2.9)
+  labLights.moon.position.set(C.x - 2.4, C.y + 3.8, C.z + 3.4); labLights.moon.target.position.set(C.x + .4, C.y, C.z - .6); labLights.moon.intensity = 40
+  scene.fog.density = .03
+  $('lab').hidden = false; previewLab()
+  $('veil').classList.remove('on')
+}
+async function exitLab() {
+  if (!labMode) return
+  $('veil').classList.add('on'); await wait(INSTANT ? 0 : 900)
+  chamber.visible = false; $('lab').hidden = true; document.body.classList.remove('lab-mode')
+  labLights.moon.intensity = labLights.sec.intensity = labLights.warmA.intensity = labLights.warmB.intensity = 0
+  Object.assign(controls, { minDistance: 6, maxDistance: 95, maxPolarAngle: Math.PI * .62 }); scene.fog.density = .0105
+  const tower = ENT.buildings.get(2), slitP = tower.slitView.getWorldPosition(new THREE.Vector3())
+  camera.position.copy(slitP); controls.target.copy(tower.anchor.getWorldPosition(new THREE.Vector3()).setY(slitP.y))
+  labMode = false; STATE.hl.delete(2)
+  $('veil').classList.remove('on')
+  flyTo(HERO.pos, HERO.target, 2.8)
+  chooseCat(currentCat.id, { focus: false })
+}
+const wait = ms => new Promise(r => setTimeout(r, ms))
+
+/* =====================================================================
+   25. BOOT · SELF TEST
+   ===================================================================== */
+setStatus('Loading SQLite (WebAssembly)…')
+engine.call({ type: 'init', seed: SEED_SQL, labSeed: LAB_SEED }, 30000).then(async r => {
+  applySnapshot(r.snapshot, { animate: false }); sqlReady = true; setStatus('')
+  if (SELFTEST) {
+    const out = { world: { buildings: ENT.buildings.size, islands: ENT.islands.size, lanterns: ENT.lanterns.size, routes: ENT.routes.size, windows: winBatches.reduce((a, b) => a + b.items.length, 0) } }
+    for (const c of CATS.filter(c => !c.lab)) { chooseCat(c.id, { focus: false }); out[c.id] = await runSQL(c.sql) }
+    out.lantern2AfterDeleteGone = !SNAP.lanterns.some(l => l.id === 2)
+    out.join_lanterns = await runSQL('SELECT lanterns.id, buildings.name FROM lanterns LEFT JOIN buildings ON lanterns.building_id = buildings.id;')
+    out.where_lanterns = await runSQL('SELECT * FROM lanterns WHERE brightness > 0.7;')
+    out.unsupported = await runSQL('SELECT COUNT(*) FROM residents;')
+    out.fk_error = await runSQL('INSERT INTO lanterns (building_id, brightness, active) VALUES (99, 0.5, 1);')
+    out.roof_update = await runSQL("UPDATE buildings SET roof_color = 'green' WHERE id = 7;")
+    out.delete_building = await runSQL('DELETE FROM buildings WHERE id = 8;')
+    out.ghost8 = STATE.buildings.get(8)?.deleted
+    out.labValid = await labTest('warden', 'moonlight-42', false)
+    out.labInjectVuln = await labTest("' OR 1=1 --", 'anything', false)
+    out.labInjectSafe = await labTest("' OR 1=1 --", 'anything', true)
+    out.labWrong = await labTest('warden', 'nope', true)
+    await $('resetBtn').onclick()
+    out.afterReset = { lanterns: ENT.lanterns.size, ghost8: STATE.buildings.get(8)?.deleted, roof7: STATE.buildings.get(7)?.roof_color }
+    const pre = $('selftest'); pre.textContent = JSON.stringify(out, (k, v) => k === 'thai' ? undefined : v, 1); pre.hidden = false
+  }
+}).catch(e => setStatus('Could not load SQLite: ' + esc(e.message) + ' — the castle remains explorable.', true))
+
+camera.position.copy(HERO.pos); controls.target.copy(HERO.target)
+if (!INSTANT && !REDUCED) startOpening()
+requestAnimationFrame(frame)
+setTimeout(() => $('loading').classList.add('done'), 350)
+</script>
+</body>
+</html>
