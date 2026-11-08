@@ -1,5 +1,9 @@
 # Python SQLite Tutorial พร้อมคู่มือใช้งานทีละขั้นตอน
 
+เว็บหลักใน branch `main` คือ **Castle Above Clouds** เริ่มจากโฟลเดอร์โปรเจกต์ด้วย `python3 dev.py` (Windows: `py dev.py`) แล้วเบราว์เซอร์จะเปิดให้เอง ต้องใช้อินเทอร์เน็ตเพื่อโหลดไลบรารีจาก CDN ดูวิธีใช้เว็บใน [คู่มือ Castle Above Clouds](castle-above-clouds/README.md)
+
+แอป React **SQL WORLD** รุ่นเดิมเก็บไว้ใน branch `sql-world-web` ส่วนเนื้อหาด้านล่างเป็นคู่มือเดโม Python SQLite
+
 งานสำหรับนำเสนอวันจันทร์ที่ **2 พฤศจิกายน พ.ศ. 2569 (ค.ศ. 2026)**
 
 โค้ดอยู่ใน `main.py` พร้อมคอมเมนต์ภาษาไทยอธิบายแนวคิด คำสั่ง SQL และการทำงานทีละส่วน ใช้ข้อมูลบุคคลจากงาน MongoDB เดิมเพื่อให้เทียบก่อนและหลังเปลี่ยนเป็น SQLite ได้
@@ -29,7 +33,9 @@
 ## 2. ไฟล์ในโปรเจกต์
 
 ```text
-python-sqlite-tutorial/
+example-db-repo/
+├── castle-above-clouds/     เว็บ Castle Above Clouds พร้อมคู่มือ
+├── dev.py                  เปิดเว็บ Castle ด้วย Python
 ├── main.py                  โค้ด Python พร้อมคอมเมนต์ภาษาไทย
 ├── README.md                คู่มือนี้
 ├── tutorial.db              ฐานข้อมูลตัวอย่าง สร้างใหม่ได้เมื่อรัน main.py
@@ -40,7 +46,7 @@ python-sqlite-tutorial/
     └── settings.json        ตั้งโฟลเดอร์ทำงานของ Python Terminal
 ```
 
-ไม่ต้องใช้ `requirements.txt` เพราะโค้ดใช้ `sqlite3` และ `pathlib` จาก Python รุ่นทั่วไป ไม่ต้องติดตั้ง `pymongo` หรือเปิด Docker/MongoDB Server
+โค้ด Python ใช้ `sqlite3` และ `pathlib` จาก Python รุ่นทั่วไป ไม่ต้องติดตั้งแพ็กเกจเพิ่มหรือเปิด Docker/MongoDB Server
 
 `sqlite3` เป็นโมดูลเสริมของ CPython ที่ชุดติดตั้งทั่วไปมีมาให้ ถ้าทดสอบ import แล้วไม่พบ ต้องใช้ชุดติดตั้ง Python ที่มีโมดูลนี้ ไม่ใช่สั่ง `pip install sqlite3`
 
@@ -59,18 +65,18 @@ Python ใช้งาน SQLite ได้แม้ยังไม่มีโ�
 
 ### 4.1 เปิดโฟลเดอร์ให้ถูกต้อง
 
-ใน VS Code เลือก **File > Open Folder...** แล้วเลือกโฟลเดอร์ `python-sqlite-tutorial` ที่ได้จากงานนี้ จากนั้นเลือก **Terminal > New Terminal**
+ใน VS Code เลือก **File > Open Folder...** แล้วเลือกโฟลเดอร์โปรเจกต์ `example-db-repo` (หรือ `example-db` หาก clone จาก GitHub) จากนั้นเลือก **Terminal > New Terminal**
 
 ตำแหน่งบนเครื่องนี้คือ:
 
 ```text
-/Users/jitwisutthobut/Documents/Codex/2026-10-25/s/outputs/python-sqlite-tutorial
+/Users/jitwisutthobut/Desktop/example-db/example-db-repo
 ```
 
 ถ้าเปิด Terminal แยกเอง ให้เข้าโฟลเดอร์ด้วยคำสั่ง:
 
 ```bash
-cd "/Users/jitwisutthobut/Documents/Codex/2026-10-25/s/outputs/python-sqlite-tutorial"
+cd "/Users/jitwisutthobut/Desktop/example-db/example-db-repo"
 ```
 
 ถ้าย้ายหรือแตก ZIP ไว้ที่อื่น ให้ใช้ตำแหน่งใหม่แทน ไม่ต้องแก้ `DB_PATH` ในโค้ด เพราะโปรแกรมหาฐานข้อมูลจากตำแหน่ง `main.py`

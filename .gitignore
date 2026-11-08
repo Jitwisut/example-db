@@ -13,3 +13,7 @@ tutorial_dump.sql
 
 # macOS metadata
 .DS_Store
+
+# Local-only: editor/preview config and an old practice database
+.claude/
+example.db
