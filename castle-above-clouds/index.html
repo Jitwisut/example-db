@@ -88,6 +88,9 @@ textarea#sqlInput:focus{border-color:rgba(242,194,123,.5)}
 .btn:hover{border-color:var(--ink-soft)}
 .btn.run{background:var(--warm);border-color:var(--warm);color:#1d1408;font-weight:500}
 .btn.run:hover{background:#ffd393}
+.btn.run.ready{animation:runReady 1.4s ease-in-out infinite}
+@keyframes runReady{0%,100%{box-shadow:0 0 0 0 rgba(242,194,123,.55)}50%{box-shadow:0 0 0 7px rgba(242,194,123,0)}}
+.chip[aria-pressed=true]{border-color:var(--warm);background:rgba(242,194,123,.12)}
 .btn:disabled{opacity:.45;cursor:progress}
 .status{margin-top:10px;font-size:10.5px;letter-spacing:.06em;line-height:1.6;color:var(--muted);min-height:16px}
 .status b{color:var(--warm);font-weight:500}
@@ -195,7 +198,14 @@ body.lab-mode #guide,body.lab-mode #labels{display:none!important}
 .lab label{display:block;font-size:9.5px;letter-spacing:.2em;color:var(--muted);margin-top:8px}
 .lab input{width:100%;margin-top:4px;padding:9px 10px;background:rgba(3,4,10,.55);border:1px solid var(--line);border-radius:2px;font-family:var(--mono);font-size:12px;outline:none}
 .lab input:focus{border-color:rgba(242,194,123,.5)}
-.presets{display:flex;gap:10px;margin-top:8px;font-size:10px;color:var(--muted);align-items:center}
+.presets{display:flex;gap:6px 10px;margin-top:8px;font-size:10px;color:var(--muted);align-items:center;flex-wrap:wrap}
+.leak{margin-top:8px;max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:2px}
+.leak table{border-collapse:collapse;width:100%;font-size:11px}
+.leak th,.leak td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.leak th{color:var(--muted);font-weight:400;font-size:9.5px;letter-spacing:.14em;position:sticky;top:0;background:#120d10}
+.leak td.secret{color:#ff8a78;background:rgba(255,90,60,.12);font-weight:500}
+.leak .cap{font-size:9.5px;letter-spacing:.18em;padding:6px 8px;color:#f3c1b9;background:rgba(233,163,154,.08)}
+.leak.safe .cap{color:#a9e2cf;background:rgba(169,226,207,.06)}
 .assembled{margin-top:12px;padding:10px 12px;background:rgba(3,4,10,.6);border:1px solid var(--line);border-radius:3px;font-size:11.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
 .assembled .inp{color:#ffcf8a;background:rgba(255,190,110,.12);border-radius:2px}
 .assembled .ph{color:#a9e2cf}
@@ -277,6 +287,8 @@ body.lab-mode #guide,body.lab-mode #labels{display:none!important}
     <div class="dock-head"><b id="catName">SELECT</b><span id="catTag"></span></div>
     <p class="th" id="catThai"></p>
     <div class="chips" id="chips" hidden></div>
+    <div class="chips" id="joinChips" hidden></div>
+    <div class="chips" id="insertChips" hidden></div>
     <textarea id="sqlInput" spellcheck="false" autocomplete="off" aria-label="SQL query"></textarea>
     <div class="row">
       <button class="btn run" id="runBtn">RUN</button>
@@ -333,7 +345,9 @@ body.lab-mode #guide,body.lab-mode #labels{display:none!important}
   <label>PASSWORD<input id="labPass" value="" autocomplete="off" spellcheck="false" placeholder="try an input…" /></label>
   <div class="presets">TRY
     <button class="link" id="presetValid">valid login</button>
-    <button class="link" id="presetInject">injection payload</button>
+    <button class="link" id="presetInject">bypass · OR 1=1</button>
+    <button class="link" id="presetUnion">UNION · passwords</button>
+    <button class="link" id="presetVault">UNION · vault</button>
   </div>
   <div class="row"><button class="btn run" id="labRun">TEST LOGIN</button><button class="btn" id="labReset">RESET LAB</button><button class="btn" id="labExit">EXIT LAB</button></div>
   <div class="assembled" id="labSql"></div>
@@ -351,6 +365,9 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+// every SQL call goes through these three files — see js/sql/ and sql/README.md
+import { castleDb, lab } from './js/sql/database.js'
+import { INSPECT, GUIDE, LOGIN_SQL_PARTS } from './js/sql/queries.js'
 
 /* =====================================================================
    0. FLAGS · RANDOMNESS · NOISE
@@ -516,8 +533,14 @@ function lightColor(value) {
   _lcCache.set(key, out); return out
 }
 const swatch = (value, cls = '') => `<i class="sw ${cls}" style="--c:${lightColor(value).hex}"></i>`
+// roof_color: the five modelled roof tones, otherwise any colour name a lantern accepts (blue, น้ำเงิน, #3060c0 …), a little darker
+function roofHex(color) {
+  if (ROOF_HEX[color]) return ROOF_HEX[color]
+  const c = lightColor(color)
+  return c.ok ? '#' + new THREE.Color(c.hex).multiplyScalar(.6).getHexString() : '#8a7a6a'
+}
 function roofMaterial(color) {
-  return new THREE.MeshPhysicalMaterial({ map: TEX.roof, color: ROOF_HEX[color] ?? '#8a7a6a', roughness: .52, clearcoat: .3, clearcoatRoughness: .45 })
+  return new THREE.MeshPhysicalMaterial({ map: TEX.roof, color: roofHex(color), roughness: .52, clearcoat: .3, clearcoatRoughness: .45 })
 }
 
 /* =====================================================================
@@ -1050,7 +1073,7 @@ const COMPOSE = { 1: composeCastle, 2: composeEmber, 3: composePorch, 4: compose
 for (const def of WORLD.islands) buildIsland(def, COMPOSE[def.id])
 
 /* building pick proxies (cheap boxes, one per building) */
-for (const ent of ENT.buildings.values()) {
+function addPickProxy(ent) {
   ent.group.updateWorldMatrix(true, true)
   const bb = new THREE.Box3()
   ent.group.traverse(o => { if (o.isMesh) { o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld)) } })
@@ -1059,7 +1082,9 @@ for (const ent of ENT.buildings.values()) {
   const proxy = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), new THREE.MeshBasicMaterial({ visible: false }))
   proxy.position.copy(center); proxy.userData.pick = { table: 'buildings', id: ent.id }
   ent.island.add(proxy); pickables.push(proxy); ent.proxy = proxy
+  ent.size = size
 }
+for (const ent of ENT.buildings.values()) addPickProxy(ent)
 
 /* =====================================================================
    10. WINDOWS — one instanced batch per island, colour driven by data
@@ -1067,13 +1092,14 @@ for (const ent of ENT.buildings.values()) {
 const WARM = new THREE.Color(1.0, 0.6, 0.3)
 const windowMat = new THREE.MeshBasicMaterial({ map: TEX.window, toneMapped: false })
 const winBatches = []
-for (const isl of ENT.islands.values()) {
-  const markers = []; isl.group.updateWorldMatrix(true, true)
-  isl.group.traverse(o => { if (o.userData.win) markers.push(o) })
-  if (!markers.length) continue
+// every window marker under `owner` (an island, or one inserted building) becomes one instanced batch
+function buildWindowBatch(owner, seed) {
+  const markers = []; owner.updateWorldMatrix(true, true)
+  owner.traverse(o => { if (o.userData.win) markers.push(o) })
+  if (!markers.length) return null
   const inst = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), windowMat, markers.length)
-  const inv = new THREE.Matrix4().copy(isl.group.matrixWorld).invert(), m = new THREE.Matrix4(), s = new THREE.Matrix4()
-  const rnd = mulberry32(isl.id * 31), batch = { inst, isl, items: [] }
+  const inv = new THREE.Matrix4().copy(owner.matrixWorld).invert(), m = new THREE.Matrix4(), s = new THREE.Matrix4()
+  const rnd = mulberry32(seed), batch = { inst, items: [] }
   markers.forEach((o, i) => {
     m.multiplyMatrices(inv, o.matrixWorld).multiply(s.makeScale(o.userData.win.w, o.userData.win.h, 1)); inst.setMatrixAt(i, m)
     const ent = ENT.buildings.get(o.userData.win.b)
@@ -1081,8 +1107,10 @@ for (const isl of ENT.islands.values()) {
     ent.windows.push(item); batch.items.push(item)
     inst.setColorAt(i, WARM)
   })
-  inst.frustumCulled = false; isl.group.add(inst); winBatches.push(batch)
+  inst.frustumCulled = false; owner.add(inst); winBatches.push(batch)
+  return batch
 }
+for (const isl of ENT.islands.values()) buildWindowBatch(isl.group, isl.id * 31)
 
 /* =====================================================================
    11. CLOUDS · MOTES · LIGHT POOL
@@ -1341,7 +1369,11 @@ const tmpC = new THREE.Color()
 function frame() {
   const dt = Math.min(clock.getDelta(), .05); time += dt
   updateCamera(dt)
-  for (const isl of islandGroups) isl.group.position.y = isl.baseY + Math.sin(time * .32 + isl.phase) * (isl.id === 1 ? .04 : .08)
+  for (const isl of islandGroups) {
+    if (isl.rise !== undefined && isl.rise < 1) { isl.rise = Math.min(1, isl.rise + dt / 2.4); if (isl.rise === 1) burst(isl.group.position.clone().add(new THREE.Vector3(0, .6, 0)), 'assemble') }
+    const climb = isl.rise === undefined ? 0 : (1 - ease(isl.rise)) * 16
+    isl.group.position.y = isl.baseY - climb + Math.sin(time * .32 + isl.phase) * (isl.id === 1 ? .04 : .08)
+  }
   for (const c of clouds) { c.sp.position.x += c.speed * dt * .6; if (c.sp.position.x > 150) c.sp.position.x = -150 }
   for (const f of flags) {
     const pos = f.geo.attributes.position
@@ -1405,118 +1437,210 @@ addEventListener('resize', () => {
 })
 
 /* =====================================================================
-   18. SQL ENGINE — real SQLite (sql.js / WASM) inside a worker
+   18. SQL ENGINE — real SQLite (sql.js / WASM) inside a worker · code in js/sql/
    ===================================================================== */
-const SQLJS = 'https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/'
-const lit = v => v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`
-const SEED_SQL = [
-  'PRAGMA foreign_keys = ON;',
-  'CREATE TABLE islands (id INTEGER PRIMARY KEY, name TEXT NOT NULL, altitude INTEGER NOT NULL, district TEXT NOT NULL);',
-  'CREATE TABLE buildings (id INTEGER PRIMARY KEY, island_id INTEGER NOT NULL REFERENCES islands(id) ON DELETE CASCADE, name TEXT NOT NULL, type TEXT NOT NULL, roof_color TEXT NOT NULL, occupied INTEGER NOT NULL DEFAULT 1);',
-  'CREATE TABLE residents (id INTEGER PRIMARY KEY, building_id INTEGER NOT NULL REFERENCES buildings(id) ON DELETE CASCADE, name TEXT NOT NULL, occupation TEXT NOT NULL, age INTEGER NOT NULL);',
-  'CREATE TABLE lanterns (id INTEGER PRIMARY KEY, building_id INTEGER REFERENCES buildings(id) ON DELETE CASCADE, island_id INTEGER REFERENCES islands(id) ON DELETE CASCADE, brightness REAL NOT NULL DEFAULT 0.7 CHECK (brightness BETWEEN 0 AND 1), active INTEGER NOT NULL DEFAULT 1, color TEXT NOT NULL DEFAULT \'warm\');',
-  'CREATE TABLE routes (id INTEGER PRIMARY KEY, from_island_id INTEGER NOT NULL REFERENCES islands(id) ON DELETE CASCADE, to_island_id INTEGER NOT NULL REFERENCES islands(id) ON DELETE CASCADE, route_type TEXT NOT NULL);',
-  ...WORLD.islands.map(i => `INSERT INTO islands VALUES (${i.id}, ${lit(i.name)}, ${i.altitude}, ${lit(i.district)});`),
-  ...WORLD.buildings.map(b => `INSERT INTO buildings VALUES (${b.id}, ${b.island_id}, ${lit(b.name)}, ${lit(b.type)}, ${lit(b.roof_color)}, ${b.occupied});`),
-  ...WORLD.residents.map(r => `INSERT INTO residents VALUES (${r.id}, ${r.building_id}, ${lit(r.name)}, ${lit(r.occupation)}, ${r.age});`),
-  ...WORLD.lanterns.map(l => `INSERT INTO lanterns VALUES (${l.id}, ${lit(l.building_id)}, ${lit(l.island_id)}, ${l.brightness}, ${l.active}, ${lit(l.color)});`),
-  ...WORLD.routes.map(r => `INSERT INTO routes VALUES (${r.id}, ${r.from_island_id}, ${r.to_island_id}, ${lit(r.route_type)});`),
-].join('\n')
-const LAB_SEED = `CREATE TABLE accounts (id INTEGER PRIMARY KEY, username TEXT NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL);
-INSERT INTO accounts VALUES (1, 'warden', 'moonlight-42', 'keeper'), (2, 'scribe', 'inkwell-7', 'archivist'), (3, 'lamplighter', 'ember-19', 'staff');`
-const WORKER_SRC = `
-importScripts('${SQLJS}sql-wasm.js');
-var db = null, lab = null;
-var ready = initSqlJs({ locateFile: function (f) { return '${SQLJS}' + f } });
-var TABLES = ['islands', 'buildings', 'residents', 'lanterns', 'routes'];
-function rows(d, sql, params) { var st = d.prepare(sql); try { if (params) st.bind(params); var cols = st.getColumnNames(), out = []; while (st.step()) out.push(st.get()); return { columns: cols, rows: out } } finally { st.free() } }
-function objects(d, sql) { var r = rows(d, sql); return r.rows.map(function (v) { var o = {}; r.columns.forEach(function (c, i) { o[c] = v[i] }); return o }) }
-function snapshot() { var s = {}; TABLES.forEach(function (t) { try { s[t] = objects(db, 'SELECT * FROM ' + t + ' ORDER BY id') } catch (e) { s[t] = [] } }); return s }
-function runAll(d, sql, cap) {
-  var out = [];
-  try {
-    for (var st of d.iterateStatements(sql)) {
-      var cols = st.getColumnNames();
-      if (cols.length) { var r = [], trunc = false; while (st.step()) { if (r.length >= cap) { trunc = true; break } r.push(st.get()) } out.push({ sql: st.getSQL(), columns: cols, rows: r, truncated: trunc }) }
-      else { st.step(); out.push({ sql: st.getSQL(), columns: [], rows: [], changes: d.getRowsModified() }) }
-    }
-    return { ok: true, results: out }
-  } catch (e) { return { ok: false, results: out, error: String(e && e.message || e) } }
-}
-async function handle(m) {
-  var SQL = await ready;
-  if (m.type === 'init' || m.type === 'reset') { if (db) db.close(); db = new SQL.Database(); db.run(m.seed); if (!lab) { lab = new SQL.Database(); lab.run(m.labSeed) } return { snapshot: snapshot() } }
-  if (m.type === 'run') {
-    var t0 = performance.now(), res = runAll(db, m.sql, 400), ms = performance.now() - t0;
-    var comp = (m.companions || []).map(function (c) { try { var r = rows(db, c); r.ok = true; return r } catch (e) { return { ok: false, error: String(e && e.message || e) } } });
-    return { res: res, ms: ms, comp: comp, snapshot: snapshot() }
-  }
-  if (m.type === 'query') { try { var r = rows(db, m.sql, m.params); r.ok = true; return r } catch (e) { return { ok: false, error: String(e && e.message || e) } } }
-  if (m.type === 'labReset') { if (lab) lab.close(); lab = new SQL.Database(); lab.run(m.labSeed); return {} }
-  if (m.type === 'lab') {
-    if (m.protected) {
-      var psql = 'SELECT id, username, role FROM accounts WHERE username = ? AND password = ?';
-      try { var pr = rows(lab, psql, [m.user, m.pass]); return { sql: psql, ok: true, columns: pr.columns, rows: pr.rows } } catch (e) { return { sql: psql, ok: false, error: String(e && e.message || e), rows: [] } }
-    }
-    var vsql = "SELECT id, username, role FROM accounts WHERE username = '" + m.user + "' AND password = '" + m.pass + "'";
-    var vr = runAll(lab, vsql, 50), first = vr.results.find(function (x) { return x.columns.length });
-    return { sql: vsql, ok: vr.ok, error: vr.error, columns: first ? first.columns : [], rows: first ? first.rows : [], statements: vr.results.length }
-  }
-}
-self.onmessage = async function (e) { var m = e.data, out; try { out = await handle(m) } catch (err) { out = { fatal: String(err && err.message || err) } } out.id = m.id; self.postMessage(out) };
-`
-class Engine {
-  constructor() { this.seq = 0; this.pending = new Map(); this.spawn() }
-  spawn() {
-    this.w = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })))
-    this.w.onmessage = e => { const p = this.pending.get(e.data.id); if (!p) return; clearTimeout(p.timer); this.pending.delete(e.data.id); e.data.fatal ? p.reject(new Error(e.data.fatal)) : p.resolve(e.data) }
-    this.w.onerror = e => { for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('SQLite worker failed to load: ' + (e.message || 'network'))) } this.pending.clear() }
-  }
-  call(msg, timeout = 5000) {
-    const id = ++this.seq
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.w.terminate(); for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('timeout')) }
-        this.pending.clear(); this.spawn(); this.onRestart?.()
-      }, timeout)
-      this.pending.set(id, { resolve, reject, timer }); this.w.postMessage({ ...msg, id })
-    })
-  }
-}
-const engine = new Engine()
+/* The town is built from sql/00_schema.sql + sql/01_seed_data.sql (or opened from castle.db).
+   castleDb.run(sql)          the SQL typed in the dock
+   castleDb.query(sql, args)  one SELECT with ? parameters
+   castleDb.snapshot()        every table, so the scene can follow the data
+   lab.loginVulnerable / lab.loginProtected   the injection lab */
 let SNAP = null, sqlReady = false
+
+/* ---------- castle.db — the database file on disk ----------
+   Boot reads castle.db (served next to this page) into SQLite; every change is written back with
+   PUT /castle.db, which dev.py saves to disk. No file yet → build it from the seed and save it.
+   ?selftest never reads or writes the file, so its checks always start from the seed. */
+const DB_FILE = 'castle.db'
+let dbSource = 'seed', autosave = !SELFTEST, saveChain = Promise.resolve()
+async function readDbFile() {
+  if (SELFTEST) return null
+  try { const r = await fetch(DB_FILE, { cache: 'no-store' }); if (!r.ok) return null; const b = await r.arrayBuffer(); return b.byteLength ? b : null }
+  catch { return null }
+}
+function noteSave(html, err = false) {
+  const s = $('status'); if (!s.innerHTML) return
+  s.insertAdjacentHTML('beforeend', ` · <span style="color:${err ? '#f0a49a' : 'inherit'};opacity:.85">${html}</span>`)
+}
+function saveDb({ quiet = false } = {}) {
+  if (!autosave) return saveChain
+  saveChain = saveChain.then(async () => {
+    const bytes = await castleDb.exportFile()
+    const r = await fetch(DB_FILE, { method: 'PUT', body: bytes, headers: { 'Content-Type': 'application/vnd.sqlite3' } })
+    if (r.status === 409) throw new Error('castle.db is busy in another program — in DB Browser press Write Changes or Revert Changes, then run again')
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    if (!quiet) noteSave(`saved to ${DB_FILE}`)
+  }).catch(e => noteSave(`not saved to ${DB_FILE} (${esc(e.message)}) — run <code>python3 dev.py</code>`, true))
+  return saveChain
+}
+// open castle.db (or the seed when there is no file); a file SQLite cannot read is never overwritten
+async function openDb(timeout) {
+  const bytes = await readDbFile()
+  const r = await castleDb.open({ bytes, timeoutMs: timeout })
+  await lab.reset()   // the lab lives in the same worker, so it is rebuilt whenever the worker starts
+  dbSource = r.source
+  if (r.source === 'seed-fallback') autosave = false
+  else if (!bytes) saveDb({ quiet: true })  // first run: create castle.db from the seed
+  return { ...r, snapshot: await castleDb.snapshot() }
+}
 
 /* =====================================================================
    19. WORLD ⇄ DATABASE SYNC — the scene always mirrors the real tables
    ===================================================================== */
 const ISLAND_ROWS = new Map(WORLD.islands.map(i => [i.id, { ...i, deleted: false }]))
-const blueprints = new Map()
 const roofTweens = []
 function tweenRoof(id, color, animate) {
   const m = roofMats.get(id); if (!m) return
-  const to = new THREE.Color(ROOF_HEX[color] ?? '#8a7a6a')
+  const to = new THREE.Color(roofHex(color))
   if (!animate) { m.color.copy(to); return }
   roofTweens.push({ m, from: m.color.clone(), to, t: 0 })
 }
 UPDATERS.push(dt => { for (let i = roofTweens.length - 1; i >= 0; i--) { const r = roofTweens[i]; r.t = Math.min(1, r.t + dt / 1.4); r.m.color.lerpColors(r.from, r.to, ease(r.t)); if (r.t >= 1) roofTweens.splice(i, 1) } })
-function blueprint(row) {
-  const isl = ENT.islands.get(row.island_id); if (!isl) return
-  const a = row.id * 2.39996, r = isl.row.r * .5
-  const g = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.5, 1.3, 1.5)), new THREE.LineBasicMaterial({ color: '#ffd393', transparent: true, opacity: .75 }))
-  g.position.set(Math.cos(a) * r, .7, Math.sin(a) * r); isl.group.add(g)
-  const roof = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.ConeGeometry(1.15, .9, 4)), g.material); roof.position.y = 1.1; roof.rotation.y = Math.PI / 4; g.add(roof)
-  blueprints.set(row.id, g)
-  label(`ghost:b:${row.id}`, `NEW ROW #${row.id} · ${esc(row.name)}<small>blueprint — inserted row, not yet built</small>`, v => g.getWorldPosition(v).add(new THREE.Vector3(0, 2.1, 0)), 'delta')
+/* ---- buildings inserted with SQL are built for real ----
+   Same architecture kit as the original seventeen: the `type` column picks the builder,
+   roof_color paints the roof, windows light up from residents / occupied, and lanterns can hang on it. */
+const BUILDERS = {
+  cottage: b => cottage(b, { w: 1.9, d: 1.6, h: 1.4 }),
+  house:   b => house(b, { w: 2.0, d: 1.7 }),
+  tower:   b => tower(b, { r: .6, h: 3.4, roofH: 1.7, rows: 2, perRow: 3, base: .5 }),
+  keep:    b => tower(b, { r: .95, h: 4.4, roofH: 2.2, rows: 3, perRow: 4, base: .8 }),   // a full keep would not fit a plot
+  hall:    b => hall(b, { w: 3.0, d: 1.9, h: 2.2 }),
+  barn:    b => barn(b),
+  stall:   b => stall(b),
+}
+const builderFor = type => BUILDERS[String(type ?? '').trim().toLowerCase()] ?? BUILDERS.cottage
+// what already stands on an island, as circles in the island's own coordinates
+function islandObstacles(isl) {
+  const out = [], bb = new THREE.Box3(), size = new THREE.Vector3(), c = new THREE.Vector3()
+  isl.group.updateWorldMatrix(true, true)
+  for (const child of isl.group.children) {
+    if (!child.visible && !child.isObject3D) continue
+    bb.setFromObject(child); if (bb.isEmpty()) continue
+    bb.getSize(size); bb.getCenter(c)
+    const r = Math.max(size.x, size.z) / 2
+    if (bb.max.y - isl.group.position.y < .15 || r > isl.row.r * .8) continue   // ground, roots, rock body, window batch
+    out.push({ x: c.x - isl.group.position.x, z: c.z - isl.group.position.z, r })
+  }
+  return out
+}
+// the free spot nearest the island's middle that fits a footprint of radius fp
+function freePlot(isl, fp) {
+  const obstacles = islandObstacles(isl), N = isl.rad.length
+  let best = null, fallback = null
+  for (const f of [0, .18, .32, .46, .58, .7]) for (let k = 0; k < 32; k++) {
+    const a = k / 32 * Math.PI * 2, edge = isl.rad[Math.round(a / (Math.PI * 2) * N) % N], d = f * edge
+    if (d + fp > edge * .88) continue
+    const x = Math.cos(a) * d, z = Math.sin(a) * d
+    const clearance = Math.min(Infinity, ...obstacles.map(o => Math.hypot(o.x - x, o.z - z) - o.r - fp))
+    if (clearance > .15 && (!best || d < best.d)) best = { x, z, d }
+    if (!fallback || clearance > fallback.clearance) fallback = { x, z, d, clearance }
+  }
+  return best ?? fallback ?? { x: 0, z: 0 }
+}
+function constructBuilding(row, { animate }) {
+  const isl = ENT.islands.get(row.island_id); if (!isl) return null
+  const flagsBefore = flags.length
+  const probe = builderFor(row.type)(row)   // build once at the origin to measure its footprint
+  const box = new THREE.Box3().setFromObject(probe), size = box.getSize(new THREE.Vector3())
+  const spot = freePlot(isl, Math.hypot(size.x, size.z) / 2)
+  // face outward: from the island's middle, or from the town when it stands in the middle
+  const ry = spot.d > .3 ? Math.atan2(spot.x, spot.z) : Math.atan2(isl.group.position.x, isl.group.position.z)
+  flags.splice(flagsBefore)                 // the probe's flags; the real build adds its own
+  roofMats.delete(row.id)
+  const ent = placeBuilding(isl.group, row, builderFor(row.type), spot.x, 0, spot.z, ry)
+  ent.flags = flags.slice(flagsBefore)
+  addPickProxy(ent)
+  ent.winBatch = buildWindowBatch(ent.group, row.id * 97)
+  ent.inserted = true
+  if (animate) {
+    ent.group.scale.setScalar(.01); let t = 0
+    UPDATERS.push(function grow(dt) {
+      t = Math.min(1, t + dt / 1.3); ent.group.scale.setScalar(Math.max(.01, ease(t)))
+      if (t === 1) { UPDATERS.splice(UPDATERS.indexOf(grow), 1); burst(ent.anchor.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, -1, 0)), 'assemble') }
+    })
+  }
+  return ent
+}
+function demolishBuilding(id) {
+  const ent = ENT.buildings.get(id); if (!ent) return
+  burst(ent.group.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1, 0)), 'dissolve')
+  ent.island.remove(ent.group); ent.island.remove(ent.proxy)
+  ENT.buildings.delete(id); roofMats.delete(id); STATE.hl.delete(id)
+  const k = pickables.indexOf(ent.proxy); if (k >= 0) pickables.splice(k, 1)
+  const w = winBatches.indexOf(ent.winBatch); if (w >= 0) winBatches.splice(w, 1)
+  for (const f of ent.flags ?? []) { const i = flags.indexOf(f); if (i >= 0) flags.splice(i, 1) }
+  for (const sl of ent.slots) slotUse.delete(sl)
+}
+/* ---- islands inserted with SQL rise as real floating islands ----
+   Placed on a ring around the town (never between the hero camera and the castle),
+   at the height their `altitude` column asks for. They join ENT.islands, so buildings,
+   lanterns, routes, JOIN, WHERE and the inspector treat them like the original seven. */
+const NEW_ISLAND_R = 3.4
+const NEW_ISLAND_PLOTS = [[0, -.2], [-1.35, 1.1], [1.35, 1.1], [0, -1.75]]   // where inserted buildings stand on a new island
+function freeIslandSpot(id) {
+  const heroAngle = Math.atan2(HERO.pos.z, HERO.pos.x)
+  const taken = [...ENT.islands.values()].map(e => ({ x: e.group.position.x, z: e.group.position.z, r: e.row.r }))
+  for (let k = 0; k < 400; k++) {
+    const a = (id + k) * 2.39996, d = 33 + (k % 6) * 4
+    const fromHero = Math.abs(Math.atan2(Math.sin(a - heroAngle), Math.cos(a - heroAngle)))
+    if (fromHero < .55) continue
+    const x = Math.cos(a) * d, z = Math.sin(a) * d
+    if (taken.every(t => Math.hypot(t.x - x, t.z - z) > t.r + NEW_ISLAND_R + 4)) return { x, z }
+  }
+  return { x: -46, z: 30 + id * 9 }
+}
+const newIslandY = altitude => Math.max(-10, Math.min(16, altY(Number(altitude) || 1200)))
+function composeNewIsland(g, def, rnd) {
+  // decoration keeps to the rim: the middle is left free for buildings inserted later (NEW_ISLAND_PLOTS)
+  tree(g, -2.2, 0, -1.2, .7, rnd)
+  bushes(g, [[2.3, 0, .9, .32], [-2.4, 0, .8, .28], [.9, 0, 2.3, .26]], rnd)
+  stones(g, [[-.6, 2.3], [.2, 2.5], [2.5, -.2]], rnd, .26)
+  // a lantern post: a lantern inserted with this island_id hangs here
+  g.add(cyl(.05, .06, 1.6, MAT.woodDark, 2.2, .8, -1.7, 7)); g.add(box(.9, .06, .06, MAT.woodDark, 1.8, 1.55, -1.7))
+  ENT.islands.get(def.id).hang.push(marker(g, 'hang', 1.4, 1.25, -1.7, { style: 'hang' }))
+}
+function raiseIsland(row, { animate }) {
+  const spot = freeIslandSpot(row.id)
+  const def = { ...row, x: spot.x, z: spot.z, r: NEW_ISLAND_R, depth: 5.8, seed: 1000 + row.id * 37 }
+  buildIsland(def, composeNewIsland)
+  const ent = ENT.islands.get(row.id)
+  ent.baseY = newIslandY(row.altitude); ent.group.position.y = ent.baseY
+  ent.rise = animate ? 0 : 1   // 0 → 1: climbs out of the clouds (see frame loop)
+}
+function sinkIsland(id) {
+  const ent = ENT.islands.get(id); if (!ent) return
+  scene.remove(ent.group); ENT.islands.delete(id)
+  islandGroups.splice(islandGroups.indexOf(ent), 1)
+  for (let i = pickables.length - 1; i >= 0; i--) { const p = pickables[i].userData.pick; if (p?.table === 'islands' && p.id === id) pickables.splice(i, 1) }
+  for (const s of ent.hang) slotUse.delete(s)
+}
+// where a row will sit once its island has finished rising (the island may still be climbing)
+function settledPosition(table, id) {
+  if (table === 'islands') { const e = ENT.islands.get(id); return e && new THREE.Vector3(e.group.position.x, e.baseY, e.group.position.z) }
+  const ent = ENT.buildings.get(id), isl = ent && [...ENT.islands.values()].find(e => e.group === ent.island)
+  return isl && ent.group.position.clone().add(new THREE.Vector3(isl.group.position.x, isl.baseY, isl.group.position.z)).add(new THREE.Vector3(0, (ent.size?.y ?? 2) * .45, 0))
+}
+// after an INSERT the camera goes to what was just created, looking in from outside so nothing stands in front of it
+function flyToInserted(items) {
+  const pts = [], hasIsland = items.some(([t]) => t === 'islands')
+  for (const [table, id] of items) {
+    const p = settledPosition(table, id); if (!p) continue
+    pts.push(p.add(new THREE.Vector3(0, table === 'islands' ? 1.2 : 0, 0)))
+    if (table === 'islands') pts.push(p.clone().add(new THREE.Vector3(NEW_ISLAND_R, -1.5, 0)), p.clone().add(new THREE.Vector3(-NEW_ISLAND_R, -1.5, 0)))
+  }
+  if (!pts.length) return false
+  const c = new THREE.Vector3(); pts.forEach(p => c.add(p)); c.divideScalar(pts.length)
+  const tallest = Math.max(0, ...items.filter(([t]) => t === 'buildings').map(([, id]) => ENT.buildings.get(id)?.size?.y ?? 0))
+  frameAround(pts, { elevation: hasIsland ? .4 : .3, distance: 1, min: hasIsland ? 15 : Math.max(8, tallest * 2.2), azimuth: Math.atan2(c.x, c.z) })
+  return true
 }
 function refreshGhosts() {
   clearLabels('ghost:')
   for (const [id, st] of STATE.buildings) {
     if (st.deleted && ENT.buildings.has(id)) label(`ghost:b:${id}`, `#${id} ${esc(st.name)} · ROW DELETED<small>simulation overlay — architecture kept</small>`, anchorOf.buildings(id), 'ghost')
   }
-  for (const [id, row] of blueprints) { const st = STATE.buildings.get(id); if (st) label(`ghost:b:${id}`, `NEW ROW #${id} · ${esc(st.name)}<small>blueprint — inserted row, not yet built</small>`, v => row.getWorldPosition(v).add(new THREE.Vector3(0, 2.1, 0)), 'delta') }
   for (const [id, st] of ISLAND_ROWS) {
     if (st.deleted) label(`ghost:i:${id}`, `ISLAND #${id} ${esc(st.name)} · ROW DELETED<small>simulation overlay</small>`, anchorOf.islands(id), 'ghost')
-    else if (st.virtual) label(`ghost:i:${id}`, `NEW ISLAND ROW #${id} · ${esc(st.name)}<small>altitude ${st.altitude} m — not yet raised</small>`, v => v.set(0, 18 + id * .5, 0), 'delta')
+    else if (st.virtual) label(`ghost:i:${id}`, `NEW ISLAND #${id} · ${esc(st.name)}<small>altitude ${esc(st.altitude)} m · ${esc(st.district)} — inserted row</small>`, anchorOf.islands(id), 'delta')
   }
 }
 function applySnapshot(next, { animate = true } = {}) {
@@ -1526,18 +1650,20 @@ function applySnapshot(next, { animate = true } = {}) {
   const ni = new Map(next.islands.map(i => [i.id, i]))
   for (const [id, st] of ISLAND_ROWS) {
     const row = ni.get(id)
-    if (!row) { if (st.virtual) ISLAND_ROWS.delete(id); else if (!st.deleted) { st.deleted = true; ch.islands.push({ id, what: 'deleted' }) } continue }
+    if (!row) { if (st.virtual) { ISLAND_ROWS.delete(id); sinkIsland(id) } else if (!st.deleted) { st.deleted = true; ch.islands.push({ id, what: 'deleted' }) } continue }
     if (st.deleted) st.deleted = false
     for (const f of ['name', 'altitude', 'district']) if (row[f] !== st[f]) ch.islands.push({ id, what: f, from: st[f], to: row[f] })
+    // an inserted island follows its altitude column (the original seven keep their modelled height)
+    if (st.virtual && row.altitude !== st.altitude) { const e = ENT.islands.get(id); if (e) e.baseY = newIslandY(row.altitude) }
     Object.assign(st, row)
   }
-  for (const row of next.islands) if (!ISLAND_ROWS.has(row.id)) { ISLAND_ROWS.set(row.id, { ...row, virtual: true }); ch.islands.push({ id: row.id, what: 'inserted' }) }
+  for (const row of next.islands) if (!ISLAND_ROWS.has(row.id)) { ISLAND_ROWS.set(row.id, { ...row, virtual: true }); raiseIsland(row, { animate }); ch.islands.push({ id: row.id, what: 'inserted' }) }
   // buildings
   const nb = new Map(next.buildings.map(b => [b.id, b]))
   for (const [id, st] of [...STATE.buildings]) {
     const row = nb.get(id)
     if (!row) {
-      if (st.virtual) { STATE.buildings.delete(id); const bp = blueprints.get(id); if (bp) { bp.parent.remove(bp); blueprints.delete(id) } }
+      if (st.virtual) { STATE.buildings.delete(id); demolishBuilding(id) }
       else if (!st.deleted) { st.deleted = true; ch.buildingsDeleted.push(id) }
       continue
     }
@@ -1548,7 +1674,7 @@ function applySnapshot(next, { animate = true } = {}) {
     }
     Object.assign(st, row)
   }
-  for (const row of next.buildings) if (!STATE.buildings.has(row.id)) { STATE.buildings.set(row.id, { ...row, virtual: true, deleted: false }); blueprint(row); ch.buildingsAdded.push(row.id) }
+  for (const row of next.buildings) if (!STATE.buildings.has(row.id)) { STATE.buildings.set(row.id, { ...row, virtual: true, deleted: false }); constructBuilding(row, { animate }); ch.buildingsAdded.push(row.id) }
   // residents -> lit windows
   const before = new Map([...STATE.residentsByBuilding].map(([k, v]) => [k, v.length]))
   setResidents(next.residents)
@@ -1602,11 +1728,12 @@ function planQuery(sql) {
   if (!/^select\b/i.test(s)) return { kind: 'other' }
   const J = /^select\s+(.+?)\s+from\s+(\w+)(?:\s+(?:as\s+)?(?!(?:inner|left|join|where|on|cross)\b)(\w+))?\s+((?:inner\s+|left\s+(?:outer\s+)?)?join)\s+(\w+)(?:\s+(?:as\s+)?(?!(?:on|where)\b)(\w+))?\s+on\s+([\w.]+)\s*=\s*([\w.]+)\s*(where\s+.+?)?\s*(order\s+by\s+.+?)?\s*(limit\s+\d+(?:\s+offset\s+\d+)?)?$/i
   if ((m = s.match(J))) {
-    const [, list, ta, aa, jt, tb, ab, k1, k2, where = '', , ] = m
+    const [, list, ta, aa, jt, tb, ab, k1, k2, where = '', order = '', limit = ''] = m
     const A = ta.toLowerCase(), B = tb.toLowerCase()
     if (!MAPPED.includes(A) || !MAPPED.includes(B) || AGG.test(list) || /\bgroup\s+by\b/i.test(s)) return { kind: 'unsupported', why: 'JOIN with aggregates' }
     const ra = aa || ta, rb = ab || tb
-    return { kind: 'join', A, B, ra, rb, k1, k2, left: /left/i.test(jt), companion: `SELECT ${ra}.id, ${rb}.id FROM ${ta}${aa ? ' ' + aa : ''} ${jt} ${tb}${ab ? ' ' + ab : ''} ON ${k1} = ${k2} ${where}` }
+    // ORDER BY only matters to the pairs when a LIMIT picks which rows survive
+    return { kind: 'join', A, B, ra, rb, k1, k2, left: /left/i.test(jt), companion: `SELECT ${ra}.id, ${rb}.id FROM ${ta}${aa ? ' ' + aa : ''} ${jt} ${tb}${ab ? ' ' + ab : ''} ON ${k1} = ${k2} ${where} ${limit ? order + ' ' + limit : ''}` }
   }
   const G = /^select\s+([\w.]+)\s*,\s*count\(\s*(?:\*|[\w.]+)\s*\)(?:\s+as\s+\w+)?\s+from\s+(\w+)(?:\s+(?:as\s+)?(?!(?:where|group)\b)(\w+))?\s*(where\s+.+?)?\s*group\s+by\s+([\w.]+)\s*(having\s+.+?)?\s*(order\s+by\s+.+?)?$/i
   if ((m = s.match(G))) {
@@ -1637,7 +1764,7 @@ const ENT_FIELD = { buildings: 'name', islands: 'name', residents: 'name', lante
 function hud(text) { const h = $('hud'); h.textContent = text; h.classList.toggle('on', !!text) }
 function clearViz() {
   STATE.hl.clear(); STATE.residentHl.clear(); clearLabels('viz:'); hud('')
-  for (const o of VIZ.objs) { o.parent?.remove(o); o.geometry?.dispose?.(); o.material?.dispose?.() }
+  for (const o of VIZ.objs) { o.parent?.remove(o); o.geometry?.dispose?.(); o.material?.map?.dispose?.(); o.material?.dispose?.() }
   VIZ.objs = []; VIZ.trails = []; VIZ.hoverables = []; VIZ.follow = null; VIZ.beacons = []; VIZ.hearts.clear()
   for (const L of ENT.lanterns.values()) { L.boost = 0; L.dim = false }
   for (const R of ENT.routes.values()) { R.dots.material.opacity = .32; R.dots.material.size = .12 }
@@ -1671,7 +1798,7 @@ UPDATERS.push(dt => {
   for (const b of VIZ.beacons) { b.t += dt; const k = Math.min(1, b.t / 1.2); b.m.material.opacity = .55 * k; b.ring.material.opacity = .8 * k; b.ring.scale.setScalar(1 + Math.sin(time * 2 + b.t) * .08) }
 })
 const PREF = { buildings: ['name', 'roof_color'], islands: ['name', 'altitude'], residents: ['name', 'occupation'], lanterns: ['id', 'color', 'brightness'], routes: ['route_type', 'from_island_id'] }
-const roofSwatch = v => `<i class="sw sq" style="--c:${ROOF_HEX[v] ?? lightColor(v).hex}"></i>`
+const roofSwatch = v => `<i class="sw sq" style="--c:${roofHex(v)}"></i>`
 const cellHtml = (col, v) => v == null || !/(^|_)colou?r$/i.test(col) ? esc(v) : /roof/i.test(col) ? `${roofSwatch(v)}${esc(v)}` : `${swatch(v)}${esc(v)}`
 function fieldsHtml(columns, row, table, star) {
   const skip = ['__id', '__ord']
@@ -1799,6 +1926,126 @@ function joinAnchor(table, id) {
   }
   return v => isl.heart.getWorldPosition(v)
 }
+/* ---- JOIN ISLE — a temporary island that rises above the castle for a JOIN.
+   Left column: rows of the FROM table. Right column: rows of the JOIN table.
+   Each glowing bridge is one row of the result, coloured by the key value both rows share.
+   It is a picture of the query, not a row in `islands`, so it stays out of ENT / ISLAND_ROWS. ---- */
+const JOIN_COLORS = ['#f2c27b', '#8fd0e8', '#c7a3d9', '#9bd38a', '#f08f7a', '#e8a6d0', '#a9b9ff', '#e6d96f', '#7fd3bb', '#f0a860']
+const JOIN_ISLE_POS = new THREE.Vector3(0, 23, 5)
+function rowLabel(table, row) {
+  if (!row) return ''
+  if (table === 'lanterns') return `Lantern · ${row.color}`
+  if (table === 'routes') return `${row.route_type} ${row.from_island_id}→${row.to_island_id}`
+  return String(row[ENT_FIELD[table]] ?? '')
+}
+function canvasPlane(w, h, px, draw) {
+  const c = document.createElement('canvas'); c.width = px; c.height = Math.round(px * h / w)
+  const g = c.getContext('2d'); draw(g, c.width, c.height)
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }))
+  return m
+}
+function fitText(g, s, w) { s = String(s); if (g.measureText(s).width <= w) return s; while (s.length > 1 && g.measureText(s + '…').width > w) s = s.slice(0, -1); return s + '…' }
+function drawRowPlaque(g, W, H, { side, id, name, keyCol, keyVal, color, dim }) {
+  g.beginPath(); g.roundRect(4, 4, W - 8, H - 8, H * .22); g.fillStyle = 'rgba(11,13,24,.94)'; g.fill()
+  g.lineWidth = 4; g.strokeStyle = dim ? 'rgba(255,255,255,.16)' : color; g.stroke()
+  const fs = Math.round(H * .4), chipW = W * .36, chipH = H * .62, chipY = (H - chipH) / 2
+  const chipX = side === 'A' ? W - chipW - H * .2 : H * .2
+  g.beginPath(); g.roundRect(chipX, chipY, chipW, chipH, chipH / 2); g.fillStyle = dim ? 'rgba(255,255,255,.12)' : color; g.fill()
+  g.font = `600 ${Math.round(fs * .82)}px "Geist Mono", monospace`; g.fillStyle = dim ? '#9a9ca8' : '#0b0d18'; g.textBaseline = 'middle'
+  g.fillText(fitText(g, `${keyCol} = ${keyVal ?? 'NULL'}`, chipW - H * .5), chipX + H * .25, H / 2 + 2)
+  const tx = side === 'A' ? H * .3 : chipX + chipW + H * .3, tw = W - chipW - H * .9
+  g.font = `400 ${Math.round(fs * .8)}px "Geist Mono", monospace`; g.fillStyle = '#8f8a82'; g.fillText(`#${id}`, tx, H / 2 + 2)
+  const idW = g.measureText(`#${id}`).width + H * .2
+  g.font = `500 ${fs}px "Geist", "IBM Plex Sans Thai", sans-serif`; g.fillStyle = dim ? '#8f8a82' : '#ece6d8'; g.fillText(fitText(g, name, tw - idW), tx + idW, H / 2 + 2)
+}
+function joinIsle(plan, pairs, { aKey, bKey, rel }) {
+  const A = plan.A, B = plan.B, MAX = 18
+  const rowsA = SNAP[A] ?? [], rowsB = SNAP[B] ?? [], byA = new Map(rowsA.map(r => [r.id, r])), byB = new Map(rowsB.map(r => [r.id, r]))
+  const usedA = new Set(pairs.map(p => p[0])), usedB = new Set(pairs.filter(p => p[1] != null).map(p => p[1]))
+  const cmp = (x, y) => (x == null) - (y == null) || (typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? '')))
+  // matched rows first, grouped by key value, so bridges run side by side instead of crossing
+  const order = (rows, used, key) => [...rows].sort((x, y) => used.has(y.id) - used.has(x.id) || cmp(x[key], y[key]) || x.id - y.id).slice(0, MAX)
+  const showA = order(rowsA, usedA, aKey), showB = order(rowsB, usedB, bKey)
+  const keys = [...new Set(pairs.filter(p => p[1] != null).map(p => byB.get(p[1])?.[bKey]))].sort(cmp)
+  const colorOf = v => JOIN_COLORS[Math.max(0, keys.indexOf(v)) % JOIN_COLORS.length]
+
+  const n = Math.max(showA.length, showB.length, 1), sp = n > 12 ? .52 : .64, ph = sp * .8, pw = 3.6, cx = 3.5
+  const y0 = 1.5, top = y0 + (n - 1) * sp, rowY = i => top - i * sp
+  const g = new THREE.Group(); g.position.copy(JOIN_ISLE_POS).add(new THREE.Vector3(0, -7, 0)); scene.add(g); VIZ.objs.push(g)
+  const add = o => { g.add(o); VIZ.objs.push(o); return o }
+  // the island itself: same rock + grass recipe as the town's islands
+  const def = { r: 6.4, depth: 6.5, seed: 919 }, rad = outline(def)
+  add(mesh(islandBody(def, rad), MAT.rock, false, true)); const cap = add(mesh(capShape(rad), MAT.grass, false, true)); cap.position.y = .02
+  for (const s of [-1, 1]) add(box(pw * .7, 1.0, .7, MAT.stone, s * cx, .5, -.25))
+  const lamp = add(new THREE.PointLight('#ffc98a', 7, 16, 2)); lamp.position.set(0, top * .6, 4)
+
+  const plaques = []
+  const plaque = (w, h, px, x, y, draw, { dim = false, delay = 0 } = {}) => { const m = add(canvasPlane(w, h, px, draw)); m.position.set(x, y, 0); m.userData.dim = dim; m.userData.delay = delay; plaques.push(m); return m }
+  const posA = new Map(), posB = new Map()
+  showA.forEach((row, i) => {
+    const dim = !usedA.has(row.id), matchedB = pairs.find(p => p[0] === row.id && p[1] != null)
+    posA.set(row.id, rowY(i))
+    plaque(pw, ph, 1024, -cx, rowY(i), (c, W, H) => drawRowPlaque(c, W, H, { side: 'A', id: row.id, name: rowLabel(A, row), keyCol: aKey, keyVal: row[aKey], color: matchedB ? colorOf(byB.get(matchedB[1])?.[bKey]) : '#f08f7a', dim }), { dim, delay: i * .04 })
+  })
+  showB.forEach((row, i) => {
+    const dim = !usedB.has(row.id)
+    posB.set(row.id, rowY(i))
+    plaque(pw, ph, 1024, cx, rowY(i), (c, W, H) => drawRowPlaque(c, W, H, { side: 'B', id: row.id, name: rowLabel(B, row), keyCol: bKey, keyVal: row[bKey], color: colorOf(row[bKey]), dim }), { dim, delay: i * .04 })
+  })
+  // column headers + the ON condition
+  const header = (x, kick, name, sub) => plaque(pw, .78, 1024, x, top + .95, (c, W, H) => {
+    c.textBaseline = 'alphabetic'; c.font = '500 40px "Geist Mono", monospace'; c.fillStyle = '#8f8a82'; c.fillText(kick, 24, 56)
+    c.font = '600 78px "Geist", sans-serif'; c.fillStyle = '#f2c27b'; c.fillText(name, 24, 150)
+    c.font = '400 38px "Geist Mono", monospace'; c.fillStyle = '#b9b2a6'; c.textAlign = 'right'; c.fillText(sub, W - 24, 150)
+  })
+  header(-cx, 'FROM · ตารางซ้าย', A, `${rowsA.length} rows`)
+  header(cx, `${plan.left ? 'LEFT JOIN' : 'JOIN'} · ตารางขวา`, B, `${rowsB.length} rows`)
+  const matched = pairs.filter(p => p[1] != null).length, nulls = pairs.length - matched
+  plaque(8.2, .9, 1400, 0, top + 2.15, (c, W, H) => {
+    c.textAlign = 'center'; c.font = '500 30px "Geist Mono", monospace'; c.fillStyle = '#8f8a82'; c.fillText('JOIN ISLE · เกาะเชื่อมตาราง', W / 2, 40)
+    c.font = '600 54px "Geist Mono", monospace'; c.fillStyle = '#ece6d8'; c.fillText(`ON ${plan.k1} = ${plan.k2}`, W / 2, 104)
+    c.font = '400 30px "Geist Mono", monospace'; c.fillStyle = '#f2c27b'; c.fillText(`${matched} matched pair${matched === 1 ? '' : 's'}${nulls ? ` · ${nulls} NULL (no match)` : ''} · faded = not in result`, W / 2, 148)
+  })
+  // bridges: one per result row
+  let i = 0
+  for (const [a, b] of pairs.slice(0, 160)) {
+    if (!posA.has(a)) continue
+    const ya = posA.get(a), rowA = byA.get(a), from = new THREE.Vector3(-cx + pw / 2, ya, .02)
+    if (b == null) {
+      const to = new THREE.Vector3(-.2, ya, .02), m = add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.LineCurve3(from, to), 8, .03, 6), trailMat('#f08f7a')))
+      m.userData.trail = { src: `${A} #${a} · ${esc(rowLabel(A, rowA))}`, dst: `NULL — ไม่มีแถวใน ${B} ที่ ${esc(bKey)} = ${esc(rowA?.[aKey])}`, key: `${plan.k1} = ${plan.k2}`, rel: 'LEFT JOIN keeps the left row, fills the right side with NULL' }
+      VIZ.hoverables.push(m); VIZ.trails.push({ m, delay: 1 + i * .05, t: 0 })
+      plaque(.95, ph * .9, 300, .35, ya, (c, W, H) => { c.beginPath(); c.roundRect(3, 3, W - 6, H - 6, H * .3); c.strokeStyle = '#f08f7a'; c.lineWidth = 4; c.stroke(); c.font = '600 40px "Geist Mono", monospace'; c.fillStyle = '#f08f7a'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('NULL', W / 2, H / 2 + 2) }, { delay: 1 + i * .05 })
+      i++; continue
+    }
+    if (!posB.has(b)) continue
+    const yb = posB.get(b), rowB = byB.get(b), to = new THREE.Vector3(cx - pw / 2, yb, .02), col = colorOf(rowB?.[bKey])
+    const curve = new THREE.CubicBezierCurve3(from, from.clone().add(new THREE.Vector3(1.3, 0, .35)), to.clone().add(new THREE.Vector3(-1.3, 0, .35)), to)
+    const m = add(new THREE.Mesh(new THREE.TubeGeometry(curve, 40, .032, 6), trailMat(col)))
+    m.userData.trail = { src: `${A} #${a} · ${esc(rowLabel(A, rowA))}`, dst: `${B} #${b} · ${esc(rowLabel(B, rowB))}`, key: `${esc(aKey)} ${esc(rowA?.[aKey])} = ${esc(bKey)} ${esc(rowB?.[bKey])}`, rel }
+    VIZ.hoverables.push(m); VIZ.trails.push({ m, delay: 1 + i * .05, t: 0 })
+    i++
+  }
+  // rise out of the clouds, then bob gently like the other islands; plaques fade in top to bottom
+  const t0 = time
+  UPDATERS.push(function u() {
+    if (!g.parent) { UPDATERS.splice(UPDATERS.indexOf(u), 1); return }
+    const k = INSTANT ? 1 : ease(clamp01((time - t0) / 1.5))
+    g.position.y = JOIN_ISLE_POS.y - 7 * (1 - k) + Math.sin(time * .32) * .08
+    for (const p of plaques) p.material.opacity = (p.userData.dim ? .4 : 1) * (INSTANT ? 1 : clamp01((time - t0 - .7 - p.userData.delay) / .5))
+  })
+  // frame both columns from the front
+  // on wide screens the SQL dock covers the left: fit the board into the free area to its right
+  const W = innerWidth, wide = W > 860, panelR = wide ? Math.min(W * .5, $('sqlPanel').getBoundingClientRect().right + 20) : 0
+  const freeFrac = (W - panelR) / W, h = top + 3, aspect = W / innerHeight, tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+  const dist = Math.max(12, (h / 2 + .8) / tan, (cx + pw / 2 + .8) / (tan * aspect * freeFrac)) * (wide ? 1.04 : 1.2)
+  // viewShift already pushes the image right by 13% of the width; move the camera sideways for the rest
+  const extraPx = wide ? (panelR + W) / 2 - W * .63 : 0, dx = extraPx * (2 * dist * tan * aspect / W)
+  const target = JOIN_ISLE_POS.clone().add(new THREE.Vector3(-dx, h / 2, 0))
+  flyTo(target.clone().add(new THREE.Vector3(0, 1.2, dist)), target, 2.4)
+  return { matched, nulls }
+}
 function visualize(plan, out) {
   const main = out.res.results.filter(r => r.columns.length).at(-1)
   const rowCount = main ? main.rows.length : 0
@@ -1817,27 +2064,16 @@ function visualize(plan, out) {
   if (plan.kind === 'join') {
     if (!comp?.ok) return { ...summary, note: 'visual mapping query failed: ' + comp?.error }
     const aliasTable = { [plan.ra.toLowerCase()]: plan.A, [plan.rb.toLowerCase()]: plan.B, [plan.A]: plan.A, [plan.B]: plan.B }
-    const side = k => { const [al, col] = k.includes('.') ? k.split('.') : [plan.ra, k]; return { table: aliasTable[al.toLowerCase()] ?? plan.A, col } }
-    const s1 = side(plan.k1), s2 = side(plan.k2)
+    const side = (k, fallback) => { const [al, col] = k.includes('.') ? k.split('.') : [fallback, k]; return { table: aliasTable[al.toLowerCase()] ?? plan.A, alias: al.toLowerCase(), col } }
+    const s1 = side(plan.k1, plan.ra), s2 = side(plan.k2, plan.rb)
+    // which ON column belongs to the left table (FROM) and which to the right (JOIN)
+    const firstIsA = s1.alias === plan.ra.toLowerCase() || s2.alias !== plan.ra.toLowerCase()
+    const aKey = firstIsA ? s1.col : s2.col, bKey = firstIsA ? s2.col : s1.col
     const one = s1.col === 'id' ? s1 : s2.col === 'id' ? s2 : null, many = one === s1 ? s2 : s1
     const rel = one ? `${many.table}.${many.col} → ${one.table}.id · many-to-one` : `${s1.table}.${s1.col} = ${s2.table}.${s2.col}`
-    let matched = 0
-    comp.rows.slice(0, 80).forEach(([a, b], i) => {
-      const ga = joinAnchor(plan.A, a); if (!ga) return
-      const pa = ga(new THREE.Vector3())
-      if (b === null) { label(`viz:null:${a}:${i}`, `NO MATCH · NULL<small>${plan.A} #${a}</small>`, ga, 'ghost'); return }
-      const gb = joinAnchor(plan.B, b); if (!gb) return
-      const rowA = SNAP[plan.A]?.find(r => r.id === a), rowB = SNAP[plan.B]?.find(r => r.id === b)
-      const keyVal = rowA && rowB ? (s1.table === plan.A ? rowA : rowB)[s1.col] : '?'
-      trail(pa, gb(new THREE.Vector3()), plan.A === 'routes' || plan.B === 'routes' ? '#ffc98a' : '#ffb870', {
-        src: `${plan.A} #${a} · ${esc(rowA?.[ENT_FIELD[plan.A]] ?? '')}`, dst: `${plan.B} #${b} · ${esc(rowB?.[ENT_FIELD[plan.B]] ?? '')}`,
-        key: `${plan.k1} = ${plan.k2} = ${esc(keyVal)}`, rel,
-      }, i * .06)
-      matched++
-    })
-    hud(`RELATIONSHIPS TRACED: ${matched}${rowCount > matched ? ` · ${rowCount - matched} WITHOUT MATCH` : ''}`)
-    focusEntities(plan.B === 'islands' || plan.A === 'islands' ? 'islands' : plan.A, [], 'aerial')
-    return { ...summary, trails: matched }
+    const r = joinIsle(plan, comp.rows, { aKey, bKey, rel })
+    hud(`JOIN ISLE · ${r.matched} PAIR${r.matched === 1 ? '' : 'S'} MATCHED${r.nulls ? ` · ${r.nulls} WITHOUT MATCH (NULL)` : ''}`)
+    return { ...summary, trails: r.matched, nulls: r.nulls }
   }
   if (plan.kind === 'group') {
     if (!comp?.ok) return { ...summary, note: 'visual mapping query failed: ' + comp?.error }
@@ -1877,10 +2113,17 @@ function narrate(ch) {
   for (const id of ch.lanternsRemoved) { const L = ENT.lanterns.get(id); if (!L) continue; n++; const p = L.group.getWorldPosition(new THREE.Vector3()); focus.push(p); label(`viz:ldel:${id}`, `LANTERN #${id} DELETED<small>light removed from the world</small>`, v => v.copy(p).add(new THREE.Vector3(0, .5, 0)), 'ghost') }
   for (const c of ch.buildingFields) { n++; focus.push(['buildings', c.id]); STATE.hl.set(c.id, 'on'); label(`viz:bchg:${c.id}:${c.field}`, `#${c.id} ${esc(STATE.buildings.get(c.id)?.name)}<small>${c.field} ${esc(c.from)} → ${esc(c.to)}</small>`, anchorOf.buildings(c.id), 'delta') }
   for (const id of ch.buildingsDeleted) { n++; focus.push(['buildings', id]) }
-  for (const id of ch.buildingsAdded) { n++; const bp = blueprints.get(id); if (bp) focus.push(bp.getWorldPosition(new THREE.Vector3())) }
+  for (const id of ch.buildingsAdded) {
+    n++; const st = STATE.buildings.get(id); if (!ENT.buildings.has(id)) continue
+    focus.push(['buildings', id]); STATE.hl.set(id, 'on')
+    label(`viz:bnew:${id}`, `NEW BUILDING #${id} · ${esc(st?.name)}<small>${esc(st?.type)} · roof ${roofSwatch(st?.roof_color)}${esc(st?.roof_color)}</small>`, anchorOf.buildings(id), 'delta')
+  }
   for (const c of ch.residents) { if (!ENT.buildings.has(c.id)) continue; n++; focus.push(['buildings', c.id]); STATE.hl.set(c.id, 'on'); label(`viz:res:${c.id}`, `#${c.id} ${esc(STATE.buildings.get(c.id)?.name)}<small>residents ${c.from} → ${c.to} · lit windows follow</small>`, anchorOf.buildings(c.id), 'delta') }
   for (const c of ch.islands) { n++; focus.push(['islands', c.id]) }
   for (const c of ch.routes) n++
+  // something new was created: go and look at it
+  const inserted = [...ch.islands.filter(c => c.what === 'inserted').map(c => ['islands', c.id]), ...ch.buildingsAdded.map(id => ['buildings', id])]
+  if (inserted.length && flyToInserted(inserted)) return n
   const pts = focus.map(f => f.isVector3 ? f : anchorOf[f[0]]?.(f[1])?.(new THREE.Vector3())).filter(Boolean)
   const lampIds = focus.every(f => !f.isVector3 && f[0] === 'lanterns') ? focus.map(f => f[1]) : []
   const oneIsland = new Set(lampIds.map(id => ENT.lanterns.get(id)?.island)).size === 1
@@ -1897,9 +2140,9 @@ const CATS = [
   { id: 'select', name: 'SELECT', tag: 'ILLUMINATE THE CASTLE', sql: 'SELECT name, type\nFROM buildings;', thai: 'เลือกคอลัมน์ที่ต้องการจากตาราง ทุกอาคารที่อยู่ในผลลัพธ์จะสว่างขึ้นเล็กน้อย และมีป้ายบอกค่าที่เลือกไว้ใกล้หลังคา', explain: 'แต่ละอาคารในเมืองคือหนึ่งแถวในตาราง buildings (id ตรงกับวัตถุ 3D) หน้าต่างที่สว่างคือห้องที่มีผู้อยู่อาศัยในตาราง residents ส่วนตะเกียงแต่ละดวงคือหนึ่งแถวใน lanterns', focus: () => focusEntities('buildings', WORLD.buildings.filter(b => b.island_id === 1).map(b => b.id), 'close') },
   { id: 'where', name: 'WHERE', tag: 'FILTER THE FLOATING WORLD', sql: "SELECT *\nFROM buildings\nWHERE roof_color = 'red';", thai: 'กรองเฉพาะแถวที่ตรงเงื่อนไข อาคารที่ตรงจะเรืองแสงพร้อมเครื่องหมาย ◆ ส่วนที่ไม่ตรงจะจางลงแต่ยังอยู่ครบ จำนวนที่แสดงมาจากผลลัพธ์จริง', explain: "ลองเปลี่ยนเงื่อนไข เช่น WHERE occupied = 0 หรือ WHERE type = 'cottage' หรือกรองตารางอื่น เช่น SELECT * FROM lanterns WHERE brightness > 0.7", focus: () => focusEntities('buildings', [], 'readable') },
   { id: 'order', name: 'ORDER BY', tag: 'REVEAL ORDER IN SPACE', sql: 'SELECT *\nFROM islands\nORDER BY altitude DESC;', thai: 'เรียงลำดับผลลัพธ์ เกาะไม่ถูกย้ายจริง แต่จะมีป้ายลำดับลอยขึ้นตามลำดับที่ SQLite คืนมา และแสงนำทางจะไล่จากอันดับแรกไปอันดับสุดท้าย', explain: 'ความสูงของเกาะในฉากคำนวณจากคอลัมน์ altitude จริง ลอง ORDER BY name หรือเปลี่ยนเป็น ASC แล้วดูลำดับเปลี่ยน', focus: () => focusEntities('islands', [], 'aerial') },
-  { id: 'join', name: 'JOIN', tag: 'CONNECT THE FLOATING ISLANDS', sql: 'SELECT buildings.name, islands.name\nFROM buildings\nJOIN islands\nON buildings.island_id = islands.id;', thai: 'จับคู่แถวจากสองตารางด้วยคีย์ที่ตรงกัน เส้นแสงแต่ละเส้นคือหนึ่งคู่ที่ SQLite จับได้จริง ชี้เมาส์ที่เส้นเพื่อดูแถวต้นทาง ปลายทาง และค่าคีย์', explain: 'ลอง JOIN ตารางอื่น เช่น lanterns กับ buildings (ON lanterns.building_id = buildings.id) หรือ residents กับ buildings แล้วใช้ LEFT JOIN เพื่อดูแถวที่ไม่มีคู่', focus: () => focusEntities('islands', [], 'aerial') },
+  { id: 'join', name: 'JOIN', tag: 'RAISE THE JOIN ISLE', sql: 'SELECT buildings.name AS building,\n       islands.name   AS island\nFROM buildings\nJOIN islands\n  ON buildings.island_id = islands.id;', thai: 'จับคู่แถวจากสองตารางด้วยคีย์ที่ตรงกัน เมื่อกด RUN เกาะใหม่ "JOIN Isle" จะลอยขึ้นเหนือปราสาท ซ้ายคือแถวของตาราง FROM ขวาคือแถวของตาราง JOIN สะพานแสงแต่ละเส้นคือหนึ่งแถวของผลลัพธ์ สีเดียวกัน = ค่าคีย์เดียวกัน แถวที่จางคือแถวที่ไม่ได้อยู่ในผลลัพธ์', explain: 'เกาะ JOIN Isle เป็นภาพของผลลัพธ์ ไม่ใช่แถวในตาราง islands ชี้เมาส์ที่สะพานเพื่อดูคู่แถวและค่าคีย์ ลองกดตัวอย่างด้านบน: lanterns LEFT JOIN buildings จะเห็นตะเกียงที่ไม่มีอาคาร (NULL) และ islands LEFT JOIN buildings จะเห็นเกาะที่ไม่มีอาคารเลย', focus: () => focusEntities('islands', [], 'aerial') },
   { id: 'group', name: 'GROUP BY', tag: 'ORGANIZE THE VILLAGE', sql: 'SELECT roof_color, COUNT(*)\nFROM buildings\nGROUP BY roof_color;', thai: 'รวมแถวที่มีค่าเหมือนกันเป็นกลุ่มแล้วนับ อาคารจะมีจุดสีตามกลุ่มของตัวเอง และตัวเลขลอยเหนือแต่ละกลุ่มคือ COUNT จริง ไม่มีอาคารไหนถูกย้าย', explain: 'ลอง GROUP BY island_id หรือ GROUP BY type ก็ได้ ตัวเลขทุกตัวมาจากผลลัพธ์ของ GROUP BY จริง', focus: () => focusEntities('buildings', [], 'high') },
-  { id: 'insert', name: 'INSERT', tag: 'BRING SOMETHING INTO THE WORLD', sql: 'INSERT INTO lanterns\n(building_id, brightness, active)\nVALUES (3, 0.8, 1);', thai: 'เพิ่มแถวใหม่ลงตาราง ตะเกียงดวงใหม่จะค่อย ๆ ประกอบขึ้นบนอาคารที่ระบุ (building 3 คือ East Tower) และอยู่ในโลกตลอด session จนกว่าจะกด RESET', explain: 'ตะเกียงจะไปอยู่ในช่องติดตั้งที่ว่างของอาคารนั้น ถ้าช่องเต็มจะตั้งเป็นเสาไฟข้างอาคาร ลองใส่ building_id ที่ไม่มีอยู่ เช่น 99 จะเห็นว่า FOREIGN KEY ไม่ยอมให้เพิ่ม', focus: () => focusEntities('buildings', [3], 'lantern') },
+  { id: 'insert', name: 'INSERT', tag: 'BRING SOMETHING INTO THE WORLD', sql: 'INSERT INTO lanterns\n(building_id, brightness, active)\nVALUES (3, 0.8, 1);', thai: 'เพิ่มแถวใหม่ลงตาราง แล้วกล้องจะพาไปดูของที่เพิ่งสร้าง: ตะเกียงประกอบขึ้นบนอาคาร เกาะใหม่ลอยขึ้นจากทะเลเมฆ อาคารใหม่ถูกสร้างขึ้นจริงบนเกาะของมัน (รูปทรงตาม type, สีหลังคาตาม roof_color) กดตัวอย่างด้านบนได้เลย', explain: 'เกาะใหม่ลอยที่ความสูงตามคอลัมน์ altitude (ประมาณ 1180–1240) type ที่สร้างได้: cottage, house, tower, keep, hall, barn, stall (อย่างอื่นจะเป็น cottage) · roof_color ใช้ชื่อสีแบบเดียวกับตะเกียงได้ เช่น blue, น้ำเงิน หรือรหัสสี #3060c0 · ตะเกียงที่ใส่ island_id ของเกาะใหม่จะแขวนที่เสาไฟบนเกาะนั้น ลองใส่ building_id ที่ไม่มีอยู่ เช่น 99 จะเห็นว่า FOREIGN KEY ไม่ยอมให้เพิ่ม · ลบเกาะ: DELETE FROM islands WHERE id = 8 (อาคารบนเกาะถูกลบตามด้วย ON DELETE CASCADE)', focus: () => focusEntities('buildings', [3], 'lantern') },
   { id: 'update', name: 'UPDATE', tag: 'CHANGE THE WORLD', sql: 'UPDATE lanterns\nSET brightness = 1.0\nWHERE id = 2;', thai: 'แก้ค่าในแถวที่มีอยู่ ตะเกียงดวงที่ 2 จะค่อย ๆ สว่างขึ้นตามค่าใหม่ และมีป้ายบอกค่าก่อนและหลัง', explain: "ลอง UPDATE buildings SET roof_color = 'green' WHERE id = 7 หลังคาจะค่อย ๆ เปลี่ยนสี หรือ UPDATE buildings SET occupied = 0 WHERE id = 5 หน้าต่างจะดับ ถ้าอยากเปลี่ยนสีหลอดไฟ ไปที่หมวด LIGHT COLOR", focus: () => focusEntities('lanterns', [2], 'lantern') },
   { id: 'color', name: 'LIGHT COLOR', tag: 'PAINT THE LANTERNS', cls: 'color', sql: "UPDATE lanterns\nSET color = 'red'\nWHERE id = 3;", thai: 'เปลี่ยนสีหลอดไฟด้วย UPDATE ตะเกียงดวงที่ 3 (หน้า Porch House) จะค่อย ๆ เปลี่ยนเป็นสีที่เขียนใน SQL ทั้งตัวโคม แสงรอบโคม และแสงที่ตกกระทบผนัง กดสีด้านล่างเพื่อใส่ลงใน SQL แล้วรันทันที', explain: "ใช้ชื่อสีได้ทั้งอังกฤษ (red, orange, yellow, green, blue, cyan, purple, pink, white, warm) ภาษาไทย (แดง ส้ม เหลือง เขียว น้ำเงิน ฟ้า ม่วง ชมพู ขาว อุ่น) ชื่อสี CSS อื่น ๆ (gold, magenta) หรือรหัสสี เช่น '#00e0ff' · เปลี่ยนหลายดวงพร้อมกัน: UPDATE lanterns SET color = 'green' WHERE building_id IN (11, 12); · ดูว่าดวงไหนสีอะไร: SELECT id, color FROM lanterns WHERE color <> 'warm'; · นับตามสี: SELECT color, COUNT(*) FROM lanterns GROUP BY color; · ถ้าใส่ชื่อสีที่ไม่รู้จัก ฐานข้อมูลยังเก็บค่าไว้ แต่ในฉากจะแสดงเป็นสี warm และมีป้ายเตือน", focus: () => focusEntities('lanterns', [3], 'lantern') },
   { id: 'delete', name: 'DELETE', tag: 'REMOVE AN OBJECT', sql: 'DELETE FROM lanterns\nWHERE id = 2;', thai: 'ลบแถวออกจากตาราง ตะเกียงจะกะพริบ หรี่ลง แล้วสลายเป็นละอองแสง ตัวปราสาทยังอยู่ครบ', explain: 'ถ้าลบแถวที่เป็นโครงสร้าง เช่น DELETE FROM buildings WHERE id = 8 ตัวบ้านจะยังอยู่แต่ไฟดับ และมีป้ายบอกว่าแถวถูกลบ (ตะเกียงและผู้อยู่อาศัยของบ้านนั้นจะถูกลบตาม ON DELETE CASCADE)', focus: () => focusEntities('lanterns', [2], 'lantern') },
@@ -1938,6 +2181,35 @@ const CHIP_COLORS = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple
     box.appendChild(b)
   }
 }
+// example buttons only fill the editor: nothing in the world changes until RUN is pressed
+function fillExample(sql, chip) {
+  $('sqlInput').value = sql
+  for (const c of chip.parentElement.children) c.setAttribute('aria-pressed', c === chip)
+  setStatus('ใส่ SQL แล้ว · กด <b>RUN</b> (หรือ ⌘/Ctrl + Enter) เพื่อรัน')
+  $('runBtn').classList.add('ready')
+  $('sqlInput').focus({ preventScroll: true })
+}
+const JOIN_EXAMPLES = [
+  ['buildings ⋈ islands', 'SELECT buildings.name AS building,\n       islands.name   AS island\nFROM buildings\nJOIN islands\n  ON buildings.island_id = islands.id;'],
+  ['residents ⋈ buildings', 'SELECT residents.name  AS resident,\n       buildings.name  AS home\nFROM residents\nJOIN buildings\n  ON residents.building_id = buildings.id;'],
+  ['lanterns LEFT ⋈ buildings', 'SELECT lanterns.id,\n       lanterns.color,\n       buildings.name AS building\nFROM lanterns\nLEFT JOIN buildings\n  ON lanterns.building_id = buildings.id;'],
+  ['islands LEFT ⋈ buildings', 'SELECT islands.name   AS island,\n       buildings.name AS building\nFROM islands\nLEFT JOIN buildings\n  ON buildings.island_id = islands.id;'],
+]
+for (const [name, sql] of JOIN_EXAMPLES) {
+  const b = document.createElement('button'); b.className = 'chip'; b.textContent = name; b.title = sql.replace(/\s+/g, ' ')
+  b.onclick = () => fillExample(sql, b)
+  $('joinChips').appendChild(b)
+}
+const INSERT_EXAMPLES = [
+  ['ตะเกียง · lantern', 'INSERT INTO lanterns\n(building_id, brightness, active)\nVALUES (3, 0.8, 1);'],
+  ['เกาะใหม่ · island', "INSERT INTO islands\n(name, altitude, district)\nVALUES ('Starfall Isle', 1210, 'Observatory');"],
+  ['อาคารบนเกาะล่าสุด · building', "-- (SELECT MAX(id) FROM islands) = เกาะที่เพิ่งสร้างล่าสุด\nINSERT INTO buildings\n(island_id, name, type, roof_color)\nVALUES ((SELECT MAX(id) FROM islands), 'Star House', 'cottage', 'blue');"],
+]
+for (const [name, sql] of INSERT_EXAMPLES) {
+  const b = document.createElement('button'); b.className = 'chip'; b.textContent = name; b.title = sql.replace(/\s+/g, ' ')
+  b.onclick = () => fillExample(sql, b)
+  $('insertChips').appendChild(b)
+}
 function chooseCat(id, { focus = true } = {}) {
   const c = CATS.find(x => x.id === id); if (!c) return
   if (c.lab) { enterLab(); return }
@@ -1946,6 +2218,8 @@ function chooseCat(id, { focus = true } = {}) {
   $('catName').textContent = c.name; $('catTag').textContent = c.tag; $('catThai').textContent = c.thai
   $('sqlInput').value = c.sql; $('explain').textContent = c.explain
   $('chips').hidden = c.id !== 'color'
+  $('joinChips').hidden = c.id !== 'join'
+  $('insertChips').hidden = c.id !== 'insert'
   if (c.id === 'color' && !lampTags) setLampTags(true)
   $('textview').hidden = true; setStatus('')
   clearViz(); hideInspector()
@@ -1967,22 +2241,32 @@ function setLampTags(on) { lampTags = on; $('lampTagBtn').setAttribute('aria-pre
 $('lampTagBtn').onclick = () => setLampTags(!lampTags)
 function setStatus(html, err = false) { const s = $('status'); s.innerHTML = html; s.classList.toggle('err', err) }
 let lastResult = null
+// the user's SQL, then the companion query that tells which 3D object each row is, then a fresh copy of every table
+async function runUserSQL(sql, companion) {
+  const res = await castleDb.run(sql)
+  const comp = companion ? [await castleDb.query(companion)] : []
+  return { res, ms: res.ms, comp, snapshot: await castleDb.snapshot() }
+}
 async function runSQL(sql) {
+  $('runBtn').classList.remove('ready')
   if (!sqlReady) { setStatus('SQLite is still loading…'); return null }
   const plan = planQuery(sql)
   clearViz(); hideInspector(); $('textview').hidden = true
   $('runBtn').disabled = true
   let out
-  try { out = await engine.call({ type: 'run', sql, companions: plan.companion ? [plan.companion] : [] }) }
-  catch (e) { $('runBtn').disabled = false; setStatus(e.message === 'timeout' ? 'Query took longer than 5 s and was stopped. The database was restored to its seed state.' : esc(e.message), true); return { ok: false, error: e.message } }
+  try { out = await runUserSQL(sql, plan.companion) }
+  catch (e) { $('runBtn').disabled = false; setStatus(e.message === 'timeout' ? `Query took longer than 5 s and was stopped. The database was reloaded from ${dbSource === 'file' ? DB_FILE : 'its seed state'}.` : esc(e.message), true); return { ok: false, error: e.message } }
   $('runBtn').disabled = false
   const ch = applySnapshot(out.snapshot, { animate: true })
+  // any statement that is not a SELECT may have changed the database (even if a later one failed): write the file
+  const wrote = out.res.results.some(r => r.changes !== undefined)
   lastResult = out.res
   const main = out.res.results.filter(r => r.columns.length).at(-1)
-  const changes = out.res.results.filter(r => r.changes !== undefined && /^\s*(insert|update|delete|replace)/i.test(r.sql)).reduce((a, r) => a + r.changes, 0)
+  const changes = out.res.results.filter(r => r.changes !== undefined && /^\s*(insert|update|delete|replace)/i.test(cleanSQL(r.sql))).reduce((a, r) => a + r.changes, 0)
   if (!out.res.ok) {
     setStatus(`<b>SQL ERROR</b> · ${esc(out.res.error)}`, true)
     narrate(ch)
+    if (wrote) saveDb()
     return { ok: false, error: out.res.error, plan: plan.kind }
   }
   let summary = { ok: true, plan: plan.kind, rows: main?.rows.length ?? 0, changes, ms: +out.ms.toFixed(2) }
@@ -2002,6 +2286,7 @@ async function runSQL(sql) {
     setStatus(`Executed · ${summary.rows} row${summary.rows === 1 ? '' : 's'} · ${out.ms.toFixed(1)} ms — no 3D mapping for this query${plan.why ? ` (${esc(plan.why)})` : ''}, rows shown below`)
     showResult(main, 'RESULT ROWS · แถวที่ได้')
   }
+  if (wrote) saveDb()
   return summary
 }
 function showResult(res, caption) {
@@ -2014,24 +2299,27 @@ function showResult(res, caption) {
 function showChangedRows(ch) {
   const pick = (table, ids) => { const rows = (SNAP[table] ?? []).filter(r => ids.includes(r.id)); return rows.length ? { columns: Object.keys(rows[0]), rows: rows.map(r => Object.values(r)) } : null }
   const lids = [...ch.lanternsAdded, ...ch.lanternsChanged.map(c => c.id)], bids = [...new Set(ch.buildingFields.map(c => c.id).concat(ch.buildingsAdded))]
-  const res = lids.length ? pick('lanterns', lids) : bids.length ? pick('buildings', bids) : null
-  if (res) showResult(res, `ROWS NOW IN ${lids.length ? 'lanterns' : 'buildings'} · ข้อมูลหลังเปลี่ยน`)
+  const iids = [...new Set(ch.islands.map(c => c.id))]
+  const table = lids.length ? 'lanterns' : bids.length ? 'buildings' : iids.length ? 'islands' : null
+  const res = table && pick(table, { lanterns: lids, buildings: bids, islands: iids }[table])
+  if (res) showResult(res, `ROWS NOW IN ${table} · ข้อมูลหลังเปลี่ยน`)
 }
 $('runBtn').onclick = () => runSQL($('sqlInput').value)
 $('sqlInput').addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runSQL($('sqlInput').value) } })
 $('resetBtn').onclick = async () => {
   if (!sqlReady) return
   clearViz(); hideInspector()
-  const r = await engine.call({ type: 'reset', seed: SEED_SQL, labSeed: LAB_SEED })
-  applySnapshot(r.snapshot); $('sqlInput').value = currentCat.sql
+  await castleDb.reset()
+  applySnapshot(await castleDb.snapshot()); $('sqlInput').value = currentCat.sql
   setStatus('Database restored to its seed state · the world follows')
+  if (dbSource !== 'seed-fallback') { dbSource = 'file'; await saveDb() }  // Reset also rewrites castle.db
 }
 $('explainBtn').onclick = e => { const ex = $('explain'); ex.hidden = !ex.hidden; e.currentTarget.setAttribute('aria-expanded', !ex.hidden) }
 $('exploreBtn').onclick = () => { document.body.classList.add('sql-mode'); chooseCat(currentCat.id); $('sqlInput').focus({ preventScroll: true }) }
 $('leaveBtn').onclick = () => { document.body.classList.remove('sql-mode'); setLampTags(false); clearViz(); hideInspector(); interrupt(); flyTo(HERO.pos, HERO.target, 2.6) }
 $('collapseBtn').onclick = e => { const p = $('sqlPanel'); p.classList.toggle('collapsed'); e.currentTarget.setAttribute('aria-expanded', !p.classList.contains('collapsed')) }
-engine.onRestart = async () => {
-  try { const r = await engine.call({ type: 'init', seed: SEED_SQL, labSeed: LAB_SEED }, 25000); applySnapshot(r.snapshot, { animate: false }); clearViz() } catch { /* status already shows the timeout */ }
+castleDb.onRestart = async () => {
+  try { const r = await openDb(25000); applySnapshot(r.snapshot, { animate: false }); clearViz() } catch { /* status already shows the timeout */ }
 }
 
 /* =====================================================================
@@ -2071,8 +2359,8 @@ async function renderGuide() {
   if (guideTab === 'tables') {
     const info = {}
     for (const t of MAPPED) {
-      const cols = await engine.call({ type: 'query', sql: `PRAGMA table_info(${t})` }).catch(() => ({}))
-      const fks = await engine.call({ type: 'query', sql: `PRAGMA foreign_key_list(${t})` }).catch(() => ({}))
+      const cols = await castleDb.query(GUIDE.columns(t)).catch(() => ({}))
+      const fks = await castleDb.query(GUIDE.foreignKeys(t)).catch(() => ({}))
       info[t] = { cols: cols.ok ? cols.rows : [], colNames: cols.columns ?? [], fks: fks.ok ? fks.rows.map(r => Object.fromEntries(fks.columns.map((c, i) => [c, r[i]]))) : [] }
     }
     if (seq !== guideSeq) return
@@ -2113,11 +2401,11 @@ async function renderGuide() {
       if (b.deleted) { html += `<article class="gcard deleted"><header><b>${esc(b.name)}</b><span>#${b.id}</span></header><div class="flagrow"><span class="flag del">ROW DELETED</span></div><p>แถวนี้ถูกลบออกจาก buildings แล้ว (residents และ lanterns ของตึกนี้ถูกลบตามด้วย) ตัวอาคารในฉากยังอยู่เป็นภาพจำลอง</p><div class="acts"><button data-sql="SELECT * FROM buildings WHERE id = ${b.id};">SELECT … WHERE id = ${b.id} →</button></div></article>`; continue }
       const res = SNAP.residents.filter(r => r.building_id === b.id), lamps = SNAP.lanterns.filter(l => l.building_id === b.id)
       html += `<article class="gcard"><header><b>${esc(b.name)}</b><span>BUILDING #${b.id}</span></header>
-        <div class="flagrow"><span class="flag">${esc(b.type)}</span><span class="flag">${b.occupied ? 'OCCUPIED' : 'VACANT'}</span>${b.virtual ? '<span class="flag new">NEW ROW · BLUEPRINT</span>' : ''}</div>
+        <div class="flagrow"><span class="flag">${esc(b.type)}</span><span class="flag">${b.occupied ? 'OCCUPIED' : 'VACANT'}</span>${b.virtual ? '<span class="flag new">NEW ROW · INSERTED</span>' : ''}</div>
         ${trow('buildings', 1, `${roofSwatch(b.roof_color)} roof_color ${esc(b.roof_color)} · type ${esc(b.type)} · occupied ${esc(b.occupied)}`)}
         ${trow('residents', res.length, pills(res.map(r => `<span class="pill">${esc(r.name)} · ${esc(r.occupation)}</span>`)))}
         ${trow('lanterns', lamps.length, pills(lamps.map(lampPill)))}
-        <div class="acts">${b.virtual ? '' : `<button data-goto="${b.id}">VIEW · ดูในฉาก</button>`}<button data-sql="SELECT * FROM residents WHERE building_id = ${b.id};">residents →</button><button data-sql="SELECT * FROM lanterns WHERE building_id = ${b.id};">lanterns →</button></div></article>`
+        <div class="acts">${ENT.buildings.has(b.id) ? `<button data-goto="${b.id}">VIEW · ดูในฉาก</button>` : ''}<button data-sql="SELECT * FROM residents WHERE building_id = ${b.id};">residents →</button><button data-sql="SELECT * FROM lanterns WHERE building_id = ${b.id};">lanterns →</button></div></article>`
     }
     if (islandLamps.length) html += `<article class="gcard"><header><b>Island lanterns</b><span>NO BUILDING</span></header><p>ไฟที่แขวนบนเกาะโดยตรง (building_id เป็น NULL, island_id = ${isl.id})</p>${trow('lanterns', islandLamps.length, pills(islandLamps.map(lampPill)))}<div class="acts"><button data-sql="SELECT * FROM lanterns WHERE island_id = ${isl.id};">lanterns →</button></div></article>`
     if (!bl.length && !islandLamps.length) html += `<article class="gcard"><p>เกาะนี้ไม่มีอาคารหรือตะเกียง</p></article>`
@@ -2135,9 +2423,9 @@ async function inspect(pick) {
   const box = $('inspector'); let html = ''
   const { table, id } = pick
   if (table === 'buildings') {
-    const b = await engine.call({ type: 'query', sql: 'SELECT b.id, b.name, b.type, b.roof_color, b.occupied, i.name AS island FROM buildings b JOIN islands i ON i.id = b.island_id WHERE b.id = ?', params: [id] })
-    const r = await engine.call({ type: 'query', sql: 'SELECT name, occupation, age FROM residents WHERE building_id = ? ORDER BY id', params: [id] })
-    const l = await engine.call({ type: 'query', sql: 'SELECT id, brightness, active, color FROM lanterns WHERE building_id = ? ORDER BY id', params: [id] })
+    const b = await castleDb.query(INSPECT.building, [id])
+    const r = await castleDb.query(INSPECT.residentsOfBuilding, [id])
+    const l = await castleDb.query(INSPECT.lanternsOfBuilding, [id])
     if (!b.rows?.length) html = `<header>BUILDING #${id}<button class="icon-btn" data-close>✕</button></header><h3>${esc(STATE.buildings.get(id)?.name)}</h3><div class="sub">This row is no longer in the database. The architecture is kept as a simulation overlay.</div>`
     else {
       const [bid, name, type, roof, occ, island] = b.rows[0]
@@ -2146,11 +2434,11 @@ async function inspect(pick) {
       <div class="sub"><b style="font-weight:400;color:var(--muted)">lanterns</b> · ${l.rows.length ? l.rows.map(x => `${swatch(x[3], x[2] ? '' : 'off')} #${x[0]} ${esc(x[3])} · ${x[2] ? x[1] : 'off'}`).join(', ') : 'none'}</div>`
     }
   } else if (table === 'islands') {
-    const i = await engine.call({ type: 'query', sql: 'SELECT id, name, altitude, district, (SELECT COUNT(*) FROM buildings WHERE island_id = islands.id) AS buildings FROM islands WHERE id = ?', params: [id] })
+    const i = await castleDb.query(INSPECT.island, [id])
     if (!i.rows?.length) html = `<header>ISLAND #${id}<button class="icon-btn" data-close>✕</button></header><div class="sub">This row is no longer in the database.</div>`
     else { const [iid, name, alt, district, nb] = i.rows[0]; html = `<header>ISLANDS · ID ${iid}<button class="icon-btn" data-close aria-label="Close">✕</button></header><h3>${esc(name)}</h3><dl><dt>altitude</dt><dd>${esc(alt)} m</dd><dt>district</dt><dd>${esc(district)}</dd><dt>buildings</dt><dd>${esc(nb)}</dd></dl>` }
   } else if (table === 'lanterns') {
-    const l = await engine.call({ type: 'query', sql: 'SELECT l.id, l.brightness, l.active, b.name, l.island_id, l.color FROM lanterns l LEFT JOIN buildings b ON b.id = l.building_id WHERE l.id = ?', params: [id] })
+    const l = await castleDb.query(INSPECT.lantern, [id])
     if (!l.rows?.length) return
     const [lid, br, act, bname, iid, col] = l.rows[0]
     html = `<header>LANTERNS · ID ${lid}<button class="icon-btn" data-close aria-label="Close">✕</button></header><h3>${swatch(col)} Lantern #${lid}</h3><dl><dt>color</dt><dd>${cellHtml('color', col)}${lightColor(col).ok ? '' : ' <span style="color:#f0a49a">(unknown · shown warm)</span>'}</dd><dt>brightness</dt><dd>${esc(br)}</dd><dt>active</dt><dd>${esc(act)}</dd><dt>building</dt><dd>${esc(bname ?? '—')}</dd>${iid ? `<dt>island_id</dt><dd>${esc(iid)}</dd>` : ''}</dl>
@@ -2209,7 +2497,7 @@ const chamber = new THREE.Group(); chamber.position.set(0, CHAMBER_Y, 0); chambe
 const gate = { bars: new THREE.Group(), lift: 0, want: 0 }
 const labLights = { warmA: new THREE.PointLight('#ffb067', 0, 9, 2), warmB: new THREE.PointLight('#ffb067', 0, 9, 2), sec: new THREE.PointLight('#ff6a4a', 0, 8, 2), moon: new THREE.SpotLight('#9fb4ff', 0, 14, .32, .6, 1.2) }
 scene.add(labLights.warmA, labLights.warmB, labLights.sec, labLights.moon, labLights.moon.target)
-const holo = []
+const holo = [], board = { c: null, tex: null, m: null, want: 0 }
 {
   const R = 4.2, H = 5.2
   const wall = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, 40, 1, true), new THREE.MeshStandardMaterial({ map: TEX.stone, color: '#a8957e', roughness: .9, side: THREE.BackSide }))
@@ -2242,6 +2530,46 @@ const holo = []
     m.position.set(x, 2.15, -2.2); m.rotation.y = ry; chamber.add(m)
     holo.push({ c, tex, m, title, tint, base: 2.15 }); drawHolo(holo.at(-1), '—')
   }
+  // the records board behind the gate: the rows the login query returned, revealed as the bars rise
+  const c = document.createElement('canvas'); c.width = 768; c.height = 1080
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.92, 2.7), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }))
+  m.position.set(0, 1.45, -3.88); chamber.add(m)
+  Object.assign(board, { c, tex, m })
+  drawBoard(null)
+}
+function drawBoard(r) {
+  const g = board.c.getContext('2d'), W = 768, H = 1080
+  g.clearRect(0, 0, W, H)
+  g.fillStyle = 'rgba(10,8,12,.92)'; g.fillRect(0, 0, W, H)
+  if (!r) { board.tex.needsUpdate = true; return }
+  const leaked = r.leaked > 0, accent = !r.ok ? '#e8b46a' : leaked ? '#ff7a62' : r.rows.length ? '#e9c58f' : '#7fd3bb'
+  g.strokeStyle = accent; g.lineWidth = 3; g.strokeRect(10, 10, W - 20, H - 20)
+  g.fillStyle = accent; g.font = '600 46px "Geist Mono", monospace'
+  g.fillText(!r.ok ? 'SQL ERROR' : leaked ? 'DATA LEAKED' : r.rows.length ? 'RECORDS RETURNED' : 'NO RECORDS', 36, 72)
+  g.font = '26px "Geist Mono", monospace'; g.fillStyle = '#b9b2a6'
+  g.fillText(r.ok ? `${r.rows.length} row${r.rows.length === 1 ? '' : 's'} from the login query${leaked ? ` · ${r.leaked} secret value${r.leaked === 1 ? '' : 's'}` : ''}` : 'the query could not run', 36, 112)
+  if (!r.ok || !r.rows.length) {
+    g.font = '26px "Geist Mono", monospace'; g.fillStyle = '#8f8a82'
+    g.fillText(r.ok ? 'the gate stays shut — nothing to show' : String(r.error).slice(0, 44), 36, 200)
+    board.tex.needsUpdate = true; return
+  }
+  const cols = r.columns, x0 = 32, colW = [64, 300, 360], top = 190, rowH = Math.min(104, (H - top - 60) / (r.rows.length + 1))
+  g.font = '500 26px "Geist Mono", monospace'; g.fillStyle = '#8f8a82'
+  let x = x0; cols.forEach((col, i) => { g.fillText(col.toUpperCase(), x, top); x += colW[i] ?? 200 })
+  g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 1; g.beginPath(); g.moveTo(x0, top + 16); g.lineTo(W - 36, top + 16); g.stroke()
+  const fit = (s, w) => { s = String(s ?? 'NULL'); if (g.measureText(s).width <= w - 16) return s; while (s.length > 1 && g.measureText(s + '…').width > w - 16) s = s.slice(0, -1); return s + '…' }
+  r.rows.slice(0, 12).forEach((row, j) => {
+    const y = top + rowH * (j + 1) + 6; let x = x0
+    row.forEach((v, i) => {
+      const w = colW[i] ?? 200, secret = r.isSecret(v)
+      g.font = `${secret ? '600' : '400'} 28px "Geist Mono", monospace`
+      if (secret) { g.fillStyle = 'rgba(255,90,60,.22)'; g.fillRect(x - 8, y - 32, w - 6, 44) }
+      g.fillStyle = secret ? '#ff8a78' : '#e8e2d4'; g.fillText(fit(v, w), x, y); x += w
+    })
+  })
+  if (r.rows.length > 12) { g.fillStyle = '#8f8a82'; g.font = '22px "Geist Mono", monospace'; g.fillText(`+ ${r.rows.length - 12} more`, x0, H - 40) }
+  board.tex.needsUpdate = true
 }
 function drawHolo(h, text, state = '') {
   const g = h.c.getContext('2d'); g.clearRect(0, 0, 512, 320)
@@ -2257,6 +2585,7 @@ function drawHolo(h, text, state = '') {
 UPDATERS.push(dt => {
   if (!chamber.visible) return
   gate.lift += (gate.want - gate.lift) * Math.min(1, dt * 1.6); gate.bars.position.y = gate.lift * 2.4
+  board.m.material.opacity += (board.want - board.m.material.opacity) * Math.min(1, dt * 2.2)
   holo.forEach((h, i) => { h.m.position.y = h.base + Math.sin(time * 1.2 + i) * .03 })
   labLights.warmA.intensity = labLights.warmB.intensity = 5 + Math.sin(time * 9) * .25
 })
@@ -2266,10 +2595,12 @@ $('modeVuln').onclick = () => setLabMode(false)
 $('modeSafe').onclick = () => setLabMode(true)
 $('presetValid').onclick = () => { $('labUser').value = 'warden'; $('labPass').value = 'moonlight-42'; previewLab() }
 $('presetInject').onclick = () => { $('labUser').value = "' OR 1=1 --"; $('labPass').value = 'anything'; previewLab() }
+$('presetUnion').onclick = () => { $('labUser').value = "' UNION SELECT id, username, password FROM accounts --"; $('labPass').value = 'anything'; previewLab() }
+$('presetVault').onclick = () => { $('labUser').value = "' UNION SELECT id, item, secret FROM vault --"; $('labPass').value = 'anything'; previewLab() }
 $('labUser').oninput = $('labPass').oninput = previewLab
 function assembledHtml(u, p, prot) {
   if (prot) return `SELECT id, username, role FROM accounts\nWHERE username = <span class="ph">?</span> AND password = <span class="ph">?</span>`
-  const head = "SELECT id, username, role FROM accounts\nWHERE username = '", mid = "' AND password = '", tail = "'"
+  const { beforeUser: head, betweenUserAndPass: mid, afterPass: tail } = LOGIN_SQL_PARTS
   const full = head + u + mid + p + tail, ci = full.indexOf('--', head.length)
   // render the user-supplied parts highlighted; anything after an injected -- is a comment to SQLite
   const parts = [[head, ''], [u, 'inp'], [mid, ''], [p, 'inp'], [tail, '']]
@@ -2288,15 +2619,24 @@ function previewLab() {
   if (labProtected) bound.textContent = `bound parameters → [ ${JSON.stringify(u)}, ${JSON.stringify(p)} ]  (sent as data, never parsed as SQL)`
 }
 async function labTest(u, p, prot) {
-  const r = await engine.call({ type: 'lab', user: u, pass: p, protected: prot })
-  const granted = r.ok && r.rows.length > 0, injected = /['"]|--|;/.test(u + p)
+  const r = prot ? await lab.loginProtected(u, p) : await lab.loginVulnerable(u, p)
+  const granted = r.ok && r.rows.length > 0, injected = /['"]|--|;/.test(u + p), union = /\bunion\b/i.test(u + p)
+  const secrets = new Set(r.secrets ?? []), isSecret = v => v != null && secrets.has(String(v))
+  const leaked = r.ok ? r.rows.reduce((a, row) => a + row.filter(isSecret).length, 0) : 0
   let thai
   if (!r.ok) thai = 'SQL ผิดรูปแบบ เพราะข้อความที่พิมพ์ไปทำลายโครงสร้างคำสั่ง นี่คือสัญญาณว่าคำสั่งถูกสร้างด้วยการต่อสตริง (ไม่ปลอดภัย)'
-  else if (!prot && granted && injected) thai = "ข้อความที่พิมพ์มีเครื่องหมาย ' ไปปิดสตริงเอง แล้วต่อเงื่อนไขใหม่ (เช่น OR 1=1) ทำให้ WHERE เป็นจริงกับทุกแถว ส่วน -- ทำให้การตรวจรหัสผ่านกลายเป็นคอมเมนต์ ประตูจึงเปิดทั้งที่ไม่รู้รหัสผ่าน"
+  else if (!prot && granted && union) thai = `UNION SELECT ต่อผลลัพธ์ของคำสั่งที่สองเข้าไปท้ายคำสั่ง login เดิม (จำนวนคอลัมน์ต้องเท่ากัน คือ 3 คอลัมน์) ข้อมูลจากคอลัมน์หรือตารางที่ไม่ควรถูกอ่านจึงโผล่ออกมาในผลลัพธ์ — ช่องสีแดงคือค่าลับ ${leaked} ค่าที่หลุดออกมา ทั้งที่หัวคอลัมน์ยังชื่อ username / role เหมือนเดิม`
+  else if (!prot && granted && injected) thai = "ข้อความที่พิมพ์มีเครื่องหมาย ' ไปปิดสตริงเอง แล้วต่อเงื่อนไขใหม่ (เช่น OR 1=1) ทำให้ WHERE เป็นจริงกับทุกแถว ส่วน -- ทำให้การตรวจรหัสผ่านกลายเป็นคอมเมนต์ ประตูจึงเปิดทั้งที่ไม่รู้รหัสผ่าน และได้รายชื่อบัญชีทุกบัญชีกลับมาด้วย (ตารางด้านล่าง และบนกระดานหลังประตู)"
   else if (prot && !granted && injected) thai = 'ค่าที่พิมพ์ถูกส่งเป็นพารามิเตอร์ (bound value) SQLite มองทั้งก้อนเป็นข้อความธรรมดา ไม่ใช่คำสั่ง จึงไม่มีผู้ใช้ชื่อนี้ ประตูไม่เปิด — นี่คือเหตุผลที่ prepared statement ป้องกัน SQL injection ได้'
   else if (granted) thai = 'ชื่อผู้ใช้และรหัสผ่านตรงกับบัญชีสมมติในฐานข้อมูลจริง จึงเข้าสู่ระบบได้ตามปกติ'
   else thai = 'ไม่พบบัญชีที่ตรงกับชื่อผู้ใช้และรหัสผ่านนี้ ประตูยังปิดอยู่'
-  return { ...r, granted, injected, thai }
+  return { ...r, granted, injected, union, leaked, isSecret, thai }
+}
+function leakTable(r, prot) {
+  if (!r.ok) return ''
+  const cap = !r.rows.length ? 'RETURNED ROWS · 0 · ไม่มีข้อมูลออกมา' : r.leaked ? `LEAKED ROWS · ข้อมูลที่หลุด · ${r.rows.length} rows · ${r.leaked} secret` : `RETURNED ROWS · ข้อมูลที่ได้ · ${r.rows.length}`
+  if (!r.rows.length) return `<div class="leak${prot ? ' safe' : ''}"><div class="cap">${cap}</div></div>`
+  return `<div class="leak${prot ? ' safe' : ''}"><div class="cap">${cap}</div><table><thead><tr>${r.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row => `<tr>${row.map(v => `<td${r.isSecret(v) ? ' class="secret" title="secret value"' : ''}>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
 }
 $('labRun').onclick = async () => {
   const u = $('labUser').value, p = $('labPass').value
@@ -2305,14 +2645,15 @@ $('labRun').onclick = async () => {
   previewLab()
   const v = $('labVerdict'); v.hidden = false
   v.className = 'verdict ' + (!r.ok ? 'err' : r.granted ? 'ok' : 'no')
-  v.innerHTML = `<strong>${!r.ok ? 'SQL ERROR' : r.granted ? 'ACCESS GRANTED' : 'ACCESS DENIED'}</strong>
-    <div class="rows">${r.ok ? `${r.rows.length} row${r.rows.length === 1 ? '' : 's'} returned${r.rows.length ? ' · ' + r.rows.map(x => `#${x[0]} ${esc(x[1])} (${esc(x[2])})`).join(', ') : ''}` : esc(r.error)}</div><p>${r.thai}</p>`
+  v.innerHTML = `<strong>${!r.ok ? 'SQL ERROR' : r.leaked ? 'ACCESS GRANTED · DATA LEAKED' : r.granted ? 'ACCESS GRANTED' : 'ACCESS DENIED'}</strong>
+    ${r.ok ? '' : `<div class="rows">${esc(r.error)}</div>`}${leakTable(r, labProtected)}<p>${r.thai}</p>`
   gate.want = r.granted ? 1 : 0
+  drawBoard(r); board.want = r.granted ? 1 : .55
   labLights.sec.color.set(!r.ok ? '#ffb347' : r.granted && r.injected ? '#ff5a3c' : r.granted ? '#ffc27a' : '#5fd6b8')
   labLights.sec.intensity = 9
   drawHolo(holo[labProtected ? 1 : 0], labProtected ? 'SELECT id, username, role FROM accounts WHERE username = ? AND password = ?   bound: ' + JSON.stringify([u, p]) : r.sql, !r.ok ? 'ERROR' : r.granted ? 'GATE OPEN' : 'GATE SHUT')
 }
-$('labReset').onclick = async () => { await engine.call({ type: 'labReset', labSeed: LAB_SEED }); gate.want = 0; labLights.sec.intensity = 0; $('labVerdict').hidden = true; holo.forEach(h => drawHolo(h, '—')); $('labUser').value = 'warden'; $('labPass').value = ''; previewLab() }
+$('labReset').onclick = async () => { await lab.reset(); gate.want = 0; board.want = 0; drawBoard(null); labLights.sec.intensity = 0; $('labVerdict').hidden = true; holo.forEach(h => drawHolo(h, '—')); $('labUser').value = 'warden'; $('labPass').value = ''; previewLab() }
 $('labExit').onclick = exitLab
 async function enterLab() {
   if (labMode) return
@@ -2325,7 +2666,9 @@ async function enterLab() {
   $('veil').classList.add('on'); await wait(INSTANT ? 0 : 900)
   document.body.classList.add('lab-mode'); chamber.visible = true
   const C = chamber.position
-  camera.position.set(C.x + .5, C.y + 1.8, C.z + 3.5); controls.target.set(C.x, C.y + 1.7, C.z - 1.6)
+  // on wide screens the terminal sits on the right: aim right of the gate so the records board stays visible
+  const sx = innerWidth > 860 ? 1.1 : 0
+  camera.position.set(C.x + .5 + sx, C.y + 1.8, C.z + 3.5); controls.target.set(C.x + sx, C.y + 1.7, C.z - 1.6)
   Object.assign(controls, { minDistance: 1.5, maxDistance: 5.6, maxPolarAngle: Math.PI * .62 })
   labLights.sec.position.set(C.x, C.y + 2.6, C.z - 2.9)
   labLights.moon.position.set(C.x - 2.4, C.y + 3.8, C.z + 3.4); labLights.moon.target.position.set(C.x + .4, C.y, C.z - .6); labLights.moon.intensity = 40
@@ -2352,13 +2695,19 @@ const wait = ms => new Promise(r => setTimeout(r, ms))
    25. BOOT · SELF TEST
    ===================================================================== */
 setStatus('Loading SQLite (WebAssembly)…')
-engine.call({ type: 'init', seed: SEED_SQL, labSeed: LAB_SEED }, 30000).then(async r => {
+openDb(30000).then(async r => {
   applySnapshot(r.snapshot, { animate: false }); sqlReady = true; setStatus('')
+  if (r.source === 'seed-fallback') setStatus(`Could not open ${DB_FILE} (${esc(r.error)}) — showing the seed data; the file will not be changed.`, true)
   if (SELFTEST) {
-    const out = { world: { buildings: ENT.buildings.size, islands: ENT.islands.size, lanterns: ENT.lanterns.size, routes: ENT.routes.size, windows: winBatches.reduce((a, b) => a + b.items.length, 0) } }
+    // sql/01_seed_data.sql must describe the same rows the 3D world was built from
+    const sameRows = (t, cols) => JSON.stringify(SNAP[t].map(r => cols.map(c => r[c]))) === JSON.stringify(WORLD[t].map(r => cols.map(c => r[c] ?? null)))
+    const seedMatchesWorld = sameRows('islands', ['id', 'name', 'altitude', 'district']) && sameRows('buildings', ['id', 'island_id', 'name', 'type', 'roof_color', 'occupied']) && sameRows('residents', ['id', 'building_id', 'name', 'occupation', 'age']) && sameRows('lanterns', ['id', 'building_id', 'island_id', 'brightness', 'active', 'color']) && sameRows('routes', ['id', 'from_island_id', 'to_island_id', 'route_type'])
+    const out = { seedMatchesWorld, world: { buildings: ENT.buildings.size, islands: ENT.islands.size, lanterns: ENT.lanterns.size, routes: ENT.routes.size, windows: winBatches.reduce((a, b) => a + b.items.length, 0) } }
     for (const c of CATS.filter(c => !c.lab)) { chooseCat(c.id, { focus: false }); out[c.id] = await runSQL(c.sql) }
     out.lantern2AfterDeleteGone = !SNAP.lanterns.some(l => l.id === 2)
     out.join_lanterns = await runSQL('SELECT lanterns.id, buildings.name FROM lanterns LEFT JOIN buildings ON lanterns.building_id = buildings.id;')
+    out.join_islands_left = await runSQL('SELECT islands.name AS island, buildings.name AS building FROM islands LEFT JOIN buildings ON buildings.island_id = islands.id;')
+    out.join_residents = await runSQL('SELECT residents.name, buildings.name FROM residents JOIN buildings ON residents.building_id = buildings.id;')
     out.where_lanterns = await runSQL('SELECT * FROM lanterns WHERE brightness > 0.7;')
     out.unsupported = await runSQL('SELECT COUNT(*) FROM residents;')
     out.fk_error = await runSQL('INSERT INTO lanterns (building_id, brightness, active) VALUES (99, 0.5, 1);')
@@ -2375,11 +2724,29 @@ engine.call({ type: 'init', seed: SEED_SQL, labSeed: LAB_SEED }, 30000).then(asy
     await wait(1100)
     out.color_lit = { l3: '#' + ENT.lanterns.get(3)?.col.getHexString(), l4: '#' + ENT.lanterns.get(4)?.col.getHexString(), l6: '#' + ENT.lanterns.get(6)?.col.getHexString(), l7: '#' + ENT.lanterns.get(7)?.col.getHexString() }
     out.delete_building = await runSQL('DELETE FROM buildings WHERE id = 8;')
+    out.island_insert = await runSQL("INSERT INTO islands (name, altitude, district) VALUES ('Starfall Isle', 1210, 'Observatory');")
+    const newId = Math.max(...SNAP.islands.map(i => i.id))
+    out.island_raised = { id: newId, inScene: ENT.islands.has(newId), pickable: pickables.some(p => p.userData.pick?.table === 'islands' && p.userData.pick.id === newId), cameraTarget: (cine.t1 ?? controls.target).toArray().map(v => +v.toFixed(1)), islandAt: ENT.islands.get(newId)?.group.position.toArray().map(v => +v.toFixed(1)) }
+    out.island_building = await runSQL("INSERT INTO buildings (island_id, name, type, roof_color) VALUES ((SELECT MAX(id) FROM islands), 'Star House', 'cottage', 'blue');")
+    out.island_lantern = await runSQL("INSERT INTO lanterns (island_id, brightness, active, color) VALUES ((SELECT MAX(id) FROM islands), 0.9, 1, 'cyan');")
+    const newB = Math.max(...SNAP.buildings.map(b => b.id)), entB = ENT.buildings.get(newB)
+    out.island_children = { built: !!entB, onNewIsland: entB?.island === ENT.islands.get(newId)?.group, windows: entB?.windows.length, pickable: pickables.includes(entB?.proxy), roof: '#' + roofMats.get(newB)?.color.getHexString(), lanternOnIsland: [...ENT.lanterns.values()].some(L => L.row.island_id === newId) }
+    out.building_castle = await runSQL("INSERT INTO buildings (island_id, name, type, roof_color) VALUES (1, 'Watch Tower', 'tower', 'green');")
+    const castleB = ENT.buildings.get(Math.max(...SNAP.buildings.map(b => b.id)))
+    out.building_castle_spot = castleB && { at: castleB.group.position.toArray().map(v => +v.toFixed(1)), windows: castleB.windows.length }
+    out.building_lantern = await runSQL('INSERT INTO lanterns (building_id, brightness, active, color) VALUES ((SELECT MAX(id) FROM buildings), 0.9, 1, \'pink\');')
+    out.building_lantern_on = [...ENT.lanterns.values()].some(L => L.row.building_id === castleB?.id && !L.dying)
+    out.island_join = await runSQL('SELECT islands.name, buildings.name FROM islands JOIN buildings ON buildings.island_id = islands.id;')
+    out.island_delete = await runSQL(`DELETE FROM islands WHERE id = ${newId};`)
+    out.island_gone = { inScene: ENT.islands.has(newId), buildingGone: !ENT.buildings.has(newB), islandGroups: islandGroups.length }
     out.ghost8 = STATE.buildings.get(8)?.deleted
     out.labValid = await labTest('warden', 'moonlight-42', false)
     out.labInjectVuln = await labTest("' OR 1=1 --", 'anything', false)
     out.labInjectSafe = await labTest("' OR 1=1 --", 'anything', true)
     out.labWrong = await labTest('warden', 'nope', true)
+    out.labUnion = await labTest("' UNION SELECT id, username, password FROM accounts --", 'x', false)
+    out.labUnionSafe = await labTest("' UNION SELECT id, username, password FROM accounts --", 'x', true)
+    out.labVault = await labTest("' UNION SELECT id, item, secret FROM vault --", 'x', false)
     await $('resetBtn').onclick()
     await wait(1100)
     out.afterReset = { lanterns: [...ENT.lanterns.values()].filter(L => !L.dying).length, ghost8: STATE.buildings.get(8)?.deleted, roof7: STATE.buildings.get(7)?.roof_color, color3: ENT.lanterns.get(3)?.row.color, col3: '#' + ENT.lanterns.get(3)?.col.getHexString(), color5: ENT.lanterns.get(5)?.row.color }
